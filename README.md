@@ -116,13 +116,6 @@ npm start
 - **Framer Motion** - Animations
 - **Tailwind CSS** - Styling
 
-## Smart Contract Consideration
-
-### Current Implementation
-This project currently uses **off-chain payment processing**:
-- Users send crypto to a specified wallet address
-- Transaction hash is stored in database
-- No on-chain verification
 
 
 ---
