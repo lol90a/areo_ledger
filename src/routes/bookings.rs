@@ -1,7 +1,17 @@
-use actix_web::{web, Result};
+use actix_web::{web, HttpResponse, Result};
+use serde::Deserialize;
 use uuid::Uuid;
-use crate::routes::dto::CreateBookingRequest;
+use crate::db::DbPool;
 use crate::errors::AppError;
+use crate::services::BookingService;
+
+#[derive(Deserialize)]
+pub struct CreateBookingRequest {
+    pub user_id: Uuid,
+    pub flight_id: Uuid,
+    pub base_price: f64,
+    pub payment_method: String,
+}
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -10,36 +20,31 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-// Creates a new booking with automatic markup calculation
 async fn create(
-    pool: web::Data<sqlx::PgPool>,
+    pool: web::Data<DbPool>,
     payload: web::Json<CreateBookingRequest>,
-) -> Result<web::Json<serde_json::Value>, AppError> {
-    // Validate payment method and price
-    payload.validate().map_err(|e: String| AppError::ValidationError(e))?;
+) -> Result<HttpResponse, AppError> {
+    //TODO: separate concern of routes , and implement controller layer that handles calling the service, also implement validation generic middleware for handling validations in the future with objects
+    // Validate payment method
+    let allowed = ["usdt", "usdc", "eth", "sol", "btc", "binance"];
+    if !allowed.contains(&payload.payment_method.as_str()) {
+        return Err(AppError::ValidationError("Unsupported payment method".to_string()));
+    }
 
-    let booking_id = Uuid::new_v4().to_string();
-    // Apply 15% markup: 10% profit + 5% service fee
-    let total_price = payload.base_price * 1.15;
+    // Validate base price
+    if payload.base_price <= 0.0 {
+        return Err(AppError::ValidationError("Base price must be positive".to_string()));
+    }
 
-    sqlx::query(
-        "INSERT INTO bookings (id, user_id, flight_id, status, base_price, markup, service_fee, total_price, payment_method) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
-    )
-    .bind(&booking_id)
-    .bind(payload.user_id.to_string())
-    .bind(&payload.flight_id)
-    .bind("pending")
-    .bind(payload.base_price)
-    .bind(payload.base_price * 0.10)  // 10% markup
-    .bind(payload.base_price * 0.05)  // 5% service fee
-    .bind(total_price)
-    .bind(&payload.payment_method)
-    .execute(&**pool)
-    .await
-    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    let (booking_id, total_price) = BookingService::create_booking(
+        &pool,
+        payload.user_id,
+        payload.flight_id,
+        payload.base_price,
+        &payload.payment_method,
+    )?;
 
-    Ok(web::Json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({
         "booking_id": booking_id,
         "total_price": total_price
     })))

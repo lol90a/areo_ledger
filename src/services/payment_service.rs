@@ -1,124 +1,100 @@
-use sqlx::{Row};
-use uuid::Uuid;
+use crate::db::DbPool;
 use crate::errors::AppError;
+use crate::models::payment::Payment;
+use uuid::Uuid;
+use chrono::NaiveDateTime;
 
-pub struct PaymentInitResponse {
-    pub booking_id: Uuid,
-    pub amount: f64,
-    pub receiver_address: String,
-    pub chain: String,
-    pub token: String,
-}
+pub struct PaymentService;
 
-pub async fn initiate_payment(
-    pool: &sqlx::PgPool,
-    booking_id: Uuid,
-    method: String,
-) -> Result<PaymentInitResponse, AppError> {
-    let row = sqlx::query("SELECT total_price FROM bookings WHERE id = ?")
-        .bind(booking_id)
-        .fetch_one(pool)
-        .await?;
+impl PaymentService {
+    pub fn init_payment(
+        pool: &DbPool,
+        booking_id: Uuid,
+        method: &str,
+    ) -> Result<(String, f64), AppError> {
+        let mut conn = pool.get().map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    let total_price: f64 = row.try_get("total_price")?;
+        // Get booking details
+        let row = conn.query_one(
+            "SELECT total_price FROM bookings WHERE id = $1",
+            &[&booking_id],
+        ).map_err(|_| AppError::NotFound)?;
 
-    let (chain, token, receiver_address) = match method.as_str() {
-        // EVM
-        "usdt" | "usdc" | "eth" => (
-            "evm".to_string(),
-            method.clone(),
-            "0xYOUR_EVM_WALLET".to_string(),
-        ),
+        let total_price: rust_decimal::Decimal = row.get(0);
+        let total_price_f64: f64 = total_price.to_string().parse().unwrap_or(0.0);
 
-        // Solana
-        "sol" => (
-            "solana".to_string(),
-            "sol".to_string(),
-            "YOUR_SOLANA_WALLET".to_string(),
-        ),
+        // Hardcoded wallet address (should be from env in production)
+        let wallet_address = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb".to_string();
 
-        // Bitcoin
-        "btc" => (
-            "btc".to_string(),
-            "btc".to_string(),
-            "YOUR_BTC_ADDRESS".to_string(),
-        ),
+        // Create payment record
+        let payment_id = Uuid::new_v4();
+        let (chain, token) = Self::get_chain_and_token(method);
 
-        // Binance Pay
-        "binance" => (
-            "binance".to_string(),
-            "usdt".to_string(),
-            "BINANCE_INVOICE".to_string(),
-        ),
+        conn.execute(
+            "INSERT INTO payments (id, booking_id, chain, token, amount, receiver_address, status) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            &[&payment_id, &booking_id, &chain, &token, &total_price_f64, &wallet_address, &"pending"],
+        ).map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-        _ => ("unknown".to_string(), "".to_string(), "".to_string()),
-    };
+        Ok((wallet_address, total_price_f64))
+    }
 
-    let payment_id = Uuid::new_v4();
+    pub fn confirm_payment(
+        pool: &DbPool,
+        booking_id: Uuid,
+        tx_hash: &str,
+    ) -> Result<(), AppError> {
+        let mut conn = pool.get().map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    sqlx::query(
-        r#"
-        INSERT INTO payments (
-            id,
-            booking_id,
-            chain,
-            token,
-            amount,
-            receiver_address,
-            status
-        )
-        VALUES (?,?,?,?,?,?,'pending')
-        "#,
-    )
-    .bind(payment_id)
-    .bind(booking_id)
-    .bind(&chain)
-    .bind(&token)
-    .bind(total_price)
-    .bind(&receiver_address)
-    .execute(pool)
-    .await?;
+        // Update payment
+        conn.execute(
+            "UPDATE payments SET tx_hash = $1, status = $2 WHERE booking_id = $3",
+            &[&tx_hash, &"confirmed", &booking_id],
+        ).map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    Ok(PaymentInitResponse {
-        booking_id,
-        amount: total_price,
-        receiver_address,
-        chain,
-        token,
-    })
-}
+        // Update booking
+        conn.execute(
+            "UPDATE bookings SET status = $1, tx_hash = $2 WHERE id = $3",
+            &[&"confirmed", &tx_hash, &booking_id],
+        ).map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-/// تأكيد الدفع بعد ما TX يتأكد على الشبكة
-pub async fn confirm_payment(
-    pool: &sqlx::PgPool,
-    booking_id: Uuid,
-    tx_hash: String,
-) -> Result<(), AppError> {
-    // تحديث حالة الدفع
-    sqlx::query(
-        r#"
-        UPDATE payments
-        SET status = 'confirmed', tx_hash = ?
-        WHERE booking_id = ?
-        "#,
-    )
-    .bind(tx_hash.clone())
-    .bind(booking_id)
-    .execute(pool)
-    .await?;
+        Ok(())
+    }
 
-    // تحديث حالة الحجز
-    sqlx::query(
-        r#"
-        UPDATE bookings
-        SET status = 'confirmed', tx_hash = ?
-        WHERE id = ?
-        "#,
-    )
-    .bind(tx_hash)
-    .bind(booking_id)
-    .execute(pool)
-    .await?;
+    pub fn get_all_payments(pool: &DbPool) -> Result<Vec<Payment>, AppError> {
+        let mut conn = pool.get().map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    Ok(())
+        let rows = conn.query(
+            "SELECT id, booking_id, chain, token, amount, sender_address, receiver_address, tx_hash, status, created_at 
+             FROM payments ORDER BY created_at DESC",
+            &[],
+        ).map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        let payments = rows.iter().map(|row| Payment {
+            id: row.get(0),
+            booking_id: row.get(1),
+            chain: row.get(2),
+            token: row.get(3),
+            amount: row.get::<_, rust_decimal::Decimal>(4).to_string().parse().unwrap_or(0.0),
+            sender_address: row.get(5),
+            receiver_address: row.get(6),
+            tx_hash: row.get(7),
+            status: row.get(8),
+            created_at: row.get::<_, NaiveDateTime>(9).to_string(),
+        }).collect();
+
+        Ok(payments)
+    }
+
+    fn get_chain_and_token(method: &str) -> (String, String) {
+        match method {
+            "btc" => ("Bitcoin".to_string(), "BTC".to_string()),
+            "eth" => ("Ethereum".to_string(), "ETH".to_string()),
+            "usdt" => ("Ethereum".to_string(), "USDT".to_string()),
+            "usdc" => ("Ethereum".to_string(), "USDC".to_string()),
+            "sol" => ("Solana".to_string(), "SOL".to_string()),
+            "binance" => ("BSC".to_string(), "BNB".to_string()),
+            _ => ("Unknown".to_string(), "Unknown".to_string()),
+        }
+    }
 }

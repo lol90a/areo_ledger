@@ -1,0 +1,218 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Product {
+    pub id: i32,
+    pub name: String,
+    pub category: String,
+    pub price: f64,
+    pub image: String,
+    pub specs: String,
+    pub description: String,
+    pub features: Vec<String>,
+}
+
+pub struct ProductService;
+
+impl ProductService {
+    pub fn get_all_products() -> Vec<Product> {
+        vec![
+            Product {
+                id: 1,
+                name: "Gulfstream G650".to_string(),
+                category: "Private Jet".to_string(),
+                price: 65000000.0,
+                image: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?w=800".to_string(),
+                specs: "Range: 7,000nm | Speed: Mach 0.925 | Seats: 19".to_string(),
+                description: "The Gulfstream G650 represents the pinnacle of private aviation excellence.".to_string(),
+                features: vec![
+                    "Ultra-long range capability".to_string(),
+                    "Advanced avionics suite".to_string(),
+                    "Luxurious cabin with full customization".to_string(),
+                    "High-speed internet connectivity".to_string(),
+                    "State-of-the-art entertainment system".to_string(),
+                ],
+            },
+            Product {
+                id: 2,
+                name: "Bombardier Global 7500".to_string(),
+                category: "Private Jet".to_string(),
+                price: 73000000.0,
+                image: "https://images.unsplash.com/photo-1583792928584-5e9d36229fc8?w=800".to_string(),
+                specs: "Range: 7,700nm | Speed: Mach 0.925 | Seats: 19".to_string(),
+                description: "The Bombardier Global 7500 sets new standards in business aviation.".to_string(),
+                features: vec![
+                    "Longest range in class".to_string(),
+                    "Four living spaces".to_string(),
+                    "Master suite with full bed".to_string(),
+                    "Nuage seating".to_string(),
+                    "Advanced wing design".to_string(),
+                ],
+            },
+            Product {
+                id: 3,
+                name: "Dassault Falcon 8X".to_string(),
+                category: "Private Jet".to_string(),
+                price: 58000000.0,
+                image: "https://images.unsplash.com/photo-1474302770737-173ee21bab63?w=800".to_string(),
+                specs: "Range: 6,450nm | Speed: Mach 0.90 | Seats: 16".to_string(),
+                description: "The Falcon 8X combines exceptional range with superior cabin comfort.".to_string(),
+                features: vec![
+                    "Tri-jet configuration".to_string(),
+                    "Digital flight controls".to_string(),
+                    "Spacious cabin".to_string(),
+                    "Low cabin altitude".to_string(),
+                    "Quiet operation".to_string(),
+                ],
+            },
+            Product {
+                id: 4,
+                name: "Sunseeker 131 Yacht".to_string(),
+                category: "Yacht".to_string(),
+                price: 28000000.0,
+                image: "https://images.unsplash.com/photo-1567899378494-47b22a2ae96a?w=800".to_string(),
+                specs: "Length: 131ft | Cabins: 5 | Crew: 8".to_string(),
+                description: "The Sunseeker 131 Yacht is a masterpiece of British yacht building.".to_string(),
+                features: vec![
+                    "5 luxurious cabins".to_string(),
+                    "Beach club".to_string(),
+                    "Jacuzzi on flybridge".to_string(),
+                    "Tender garage".to_string(),
+                    "Advanced stabilization".to_string(),
+                ],
+            },
+            Product {
+                id: 5,
+                name: "Azimut Grande 35M".to_string(),
+                category: "Yacht".to_string(),
+                price: 18000000.0,
+                image: "https://images.unsplash.com/photo-1605281317010-fe5ffe798166?w=800".to_string(),
+                specs: "Length: 115ft | Cabins: 4 | Crew: 6".to_string(),
+                description: "Italian elegance meets cutting-edge technology in this stunning superyacht.".to_string(),
+                features: vec![
+                    "Carbon fiber superstructure".to_string(),
+                    "Panoramic windows".to_string(),
+                    "Beach area".to_string(),
+                    "Gym".to_string(),
+                    "Wine cellar".to_string(),
+                ],
+            },
+            Product {
+                id: 6,
+                name: "Princess Y85".to_string(),
+                category: "Yacht".to_string(),
+                price: 12500000.0,
+                image: "https://images.unsplash.com/photo-1569263979104-865ab7cd8d13?w=800".to_string(),
+                specs: "Length: 85ft | Cabins: 4 | Crew: 4".to_string(),
+                description: "The Princess Y85 offers exceptional space and luxury in a sleek design.".to_string(),
+                features: vec![
+                    "Hydraulic balcony".to_string(),
+                    "Beach club".to_string(),
+                    "Flybridge".to_string(),
+                    "Tender garage".to_string(),
+                    "Volvo IPS propulsion".to_string(),
+                ],
+            },
+            Product {
+                id: 7,
+                name: "Manhattan Penthouse".to_string(),
+                category: "Real Estate".to_string(),
+                price: 45000000.0,
+                image: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800".to_string(),
+                specs: "8,500 sqft | 5 Bed | 6 Bath | NYC".to_string(),
+                description: "An extraordinary penthouse in the heart of Manhattan.".to_string(),
+                features: vec![
+                    "360-degree city views".to_string(),
+                    "Private elevator".to_string(),
+                    "Chef's kitchen".to_string(),
+                    "Home theater".to_string(),
+                    "Wine cellar".to_string(),
+                ],
+            },
+            Product {
+                id: 8,
+                name: "Beverly Hills Mansion".to_string(),
+                category: "Real Estate".to_string(),
+                price: 38000000.0,
+                image: "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800".to_string(),
+                specs: "12,000 sqft | 7 Bed | 9 Bath | LA".to_string(),
+                description: "A stunning contemporary estate in prestigious Beverly Hills.".to_string(),
+                features: vec![
+                    "Infinity pool".to_string(),
+                    "Home gym".to_string(),
+                    "Wine cellar".to_string(),
+                    "Smart home system".to_string(),
+                    "Guest house".to_string(),
+                ],
+            },
+            Product {
+                id: 9,
+                name: "Miami Beach Villa".to_string(),
+                category: "Real Estate".to_string(),
+                price: 22000000.0,
+                image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800".to_string(),
+                specs: "6,800 sqft | 6 Bed | 7 Bath | Miami".to_string(),
+                description: "Waterfront luxury living at its finest with direct ocean access.".to_string(),
+                features: vec![
+                    "Private beach".to_string(),
+                    "Dock for yacht".to_string(),
+                    "Infinity pool".to_string(),
+                    "Rooftop terrace".to_string(),
+                    "Smart home".to_string(),
+                ],
+            },
+            Product {
+                id: 10,
+                name: "Bugatti Chiron".to_string(),
+                category: "Car".to_string(),
+                price: 3500000.0,
+                image: "https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=800".to_string(),
+                specs: "1,500 HP | 0-60: 2.4s | Top: 261mph".to_string(),
+                description: "The Bugatti Chiron is a hypercar that pushes the boundaries.".to_string(),
+                features: vec![
+                    "Quad-turbocharged W16 engine".to_string(),
+                    "Carbon fiber monocoque".to_string(),
+                    "Active aerodynamics".to_string(),
+                    "Bespoke interior".to_string(),
+                    "Limited production".to_string(),
+                ],
+            },
+            Product {
+                id: 11,
+                name: "Rolls-Royce Phantom".to_string(),
+                category: "Car".to_string(),
+                price: 550000.0,
+                image: "https://images.unsplash.com/photo-1631295868223-63265b40d9e4?w=800".to_string(),
+                specs: "563 HP | 0-60: 5.1s | Luxury Sedan".to_string(),
+                description: "The pinnacle of automotive luxury, offering unmatched refinement.".to_string(),
+                features: vec![
+                    "Handcrafted interior".to_string(),
+                    "Magic carpet ride".to_string(),
+                    "Starlight headliner".to_string(),
+                    "Bespoke options".to_string(),
+                    "V12 engine".to_string(),
+                ],
+            },
+            Product {
+                id: 12,
+                name: "Ferrari SF90 Stradale".to_string(),
+                category: "Car".to_string(),
+                price: 625000.0,
+                image: "https://images.unsplash.com/photo-1592198084033-aade902d1aae?w=800".to_string(),
+                specs: "986 HP | 0-60: 2.5s | Hybrid".to_string(),
+                description: "Ferrari's first plug-in hybrid supercar combines electrifying performance.".to_string(),
+                features: vec![
+                    "Hybrid powertrain".to_string(),
+                    "All-wheel drive".to_string(),
+                    "Advanced aerodynamics".to_string(),
+                    "F1 technology".to_string(),
+                    "Electric mode".to_string(),
+                ],
+            },
+        ]
+    }
+
+    pub fn get_product_by_id(id: i32) -> Option<Product> {
+        Self::get_all_products().into_iter().find(|p| p.id == id)
+    }
+}
