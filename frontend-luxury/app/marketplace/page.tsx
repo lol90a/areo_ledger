@@ -51,7 +51,7 @@ export default function MarketplacePage() {
             className="mb-12"
           >
             <h1 className="font-display text-5xl md:text-6xl font-bold mb-4">
-              Luxury <span className="text-gold">Marketplace</span>
+              Luxury <span className="text-white">Marketplace</span>
             </h1>
             <p className="text-xl text-muted max-w-2xl">
               Buy private jets, yachts, real estate, and luxury cars with cryptocurrency
@@ -72,7 +72,7 @@ export default function MarketplacePage() {
                 placeholder="Search items..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
+                className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
               />
             </div>
 
@@ -83,7 +83,7 @@ export default function MarketplacePage() {
                   onClick={() => setSelectedCategory(category)}
                   className={`px-6 py-2 rounded-lg transition-all ${
                     selectedCategory === category
-                      ? 'bg-gold text-primary font-semibold'
+                      ? 'bg-[rgb(var(--accent))] text-white font-semibold'
                       : 'glass-card hover:bg-white/10'
                   }`}
                 >
@@ -115,21 +115,21 @@ export default function MarketplacePage() {
                     className="object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className="absolute top-4 right-4">
-                    <span className="glass-card px-3 py-1 text-xs font-semibold text-gold">
+                    <span className="glass-card px-3 py-1 text-xs font-semibold text-white">
                       {item.category}
                     </span>
                   </div>
                 </div>
 
                 <div className="p-6">
-                  <h3 className="font-display text-2xl font-bold mb-2 group-hover:text-gold transition-colors">
+                  <h3 className="font-display text-2xl font-bold mb-2 group-hover:text-white transition-colors">
                     {item.name}
                   </h3>
                   <p className="text-sm text-muted mb-4">{item.specs}</p>
                   
                   <div className="mb-4">
                     <div className="text-sm text-muted mb-1">Price in USD</div>
-                    <div className="text-3xl font-bold text-gold mb-3">
+                    <div className="text-3xl font-bold text-white mb-3">
                       ${item.price.toLocaleString()}
                     </div>
                     <div className="text-xs text-muted space-y-1">
@@ -173,3 +173,5 @@ export default function MarketplacePage() {
     </div>
   )
 }
+
+

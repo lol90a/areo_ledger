@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { api, session } from "@/lib/api";
 
 interface Profile {
   id: string;
@@ -30,45 +30,48 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (userId) {
-      fetch(`http://127.0.0.1:8080/api/profile/${userId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          setProfile(data);
-          setName(data.name);
-          setEmail(data.email);
-          setWalletAddress(data.wallet_address || "");
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
-    }
+    const fetchProfile = async () => {
+      const userId = session.getUserId();
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await api.profile.getById(userId);
+        const data = response.data;
+        setProfile(data);
+        setName(data.name);
+        setEmail(data.email);
+        setWalletAddress(data.wallet_address || "");
+      } catch {
+        setError("Failed to load profile");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
   }, []);
 
   const handleUpdateProfile = async () => {
-    const userId = localStorage.getItem("userId");
+    const userId = session.getUserId();
     if (!userId) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8080/api/profile/${userId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, wallet_address: walletAddress }),
+      const response = await api.profile.update(userId, {
+        name,
+        email,
+        wallet_address: walletAddress,
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setMessage("Profile updated successfully");
-        setError("");
-        setEditing(false);
-        localStorage.setItem("userName", name);
-        setTimeout(() => setMessage(""), 3000);
-      } else {
-        setError(data.error || "Failed to update profile");
-        setMessage("");
-      }
-    } catch (err) {
-      setError("Network error");
+      setProfile(response.data);
+      setMessage("Profile updated successfully");
+      setError("");
+      setEditing(false);
+      setTimeout(() => setMessage(""), 3000);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || "Failed to update profile");
       setMessage("");
     }
   };
@@ -79,31 +82,24 @@ export default function ProfilePage() {
       return;
     }
 
-    const userId = localStorage.getItem("userId");
+    const userId = session.getUserId();
     if (!userId) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8080/api/profile/${userId}/password`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      const response = await api.profile.updatePassword(userId, {
+        current_password: currentPassword,
+        new_password: newPassword,
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setMessage("Password changed successfully");
-        setError("");
-        setChangingPassword(false);
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-        setTimeout(() => setMessage(""), 3000);
-      } else {
-        setError(data.error || "Failed to change password");
-        setMessage("");
-      }
-    } catch (err) {
-      setError("Network error");
+      setMessage(response.data.message || "Password changed successfully");
+      setError("");
+      setChangingPassword(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setTimeout(() => setMessage(""), 3000);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || "Failed to change password");
       setMessage("");
     }
   };
@@ -141,7 +137,7 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className="bg-zinc-900 p-8 rounded-lg border border-zinc-800 mb-6">
+        <div className="bg-zinc-900 p-8 rounded-lg border border-[rgba(var(--accent),0.30)] mb-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold">Personal Information</h2>
             {!editing && (
@@ -162,7 +158,7 @@ export default function ProfilePage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2"
+                  className="w-full bg-zinc-800 border border-[rgba(var(--accent),0.30)] rounded-lg px-4 py-2"
                 />
               ) : (
                 <p className="text-lg">{profile.name}</p>
@@ -176,7 +172,7 @@ export default function ProfilePage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2"
+                  className="w-full bg-zinc-800 border border-[rgba(var(--accent),0.30)] rounded-lg px-4 py-2"
                 />
               ) : (
                 <p className="text-lg">{profile.email}</p>
@@ -190,7 +186,7 @@ export default function ProfilePage() {
                   type="text"
                   value={walletAddress}
                   onChange={(e) => setWalletAddress(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2"
+                  className="w-full bg-zinc-800 border border-[rgba(var(--accent),0.30)] rounded-lg px-4 py-2"
                   placeholder="0x..."
                 />
               ) : (
@@ -232,7 +228,7 @@ export default function ProfilePage() {
           )}
         </div>
 
-        <div className="bg-zinc-900 p-8 rounded-lg border border-zinc-800">
+        <div className="bg-zinc-900 p-8 rounded-lg border border-[rgba(var(--accent),0.30)]">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold">Security</h2>
             {!changingPassword && (
@@ -253,7 +249,7 @@ export default function ProfilePage() {
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2"
+                  className="w-full bg-zinc-800 border border-[rgba(var(--accent),0.30)] rounded-lg px-4 py-2"
                 />
               </div>
 
@@ -263,7 +259,7 @@ export default function ProfilePage() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2"
+                  className="w-full bg-zinc-800 border border-[rgba(var(--accent),0.30)] rounded-lg px-4 py-2"
                 />
               </div>
 
@@ -273,7 +269,7 @@ export default function ProfilePage() {
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2"
+                  className="w-full bg-zinc-800 border border-[rgba(var(--accent),0.30)] rounded-lg px-4 py-2"
                 />
               </div>
 
@@ -303,3 +299,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

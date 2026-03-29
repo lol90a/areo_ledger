@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { pendingBookingStore, session } from "@/lib/api";
 
 interface OrderHistoryItem {
   status: string;
@@ -31,32 +32,63 @@ export default function OrderTrackingPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (userId) {
-      fetch(`http://127.0.0.1:8080/api/orders/user/${userId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          setOrders(data);
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
+    const userId = session.getUserId();
+    const pendingBooking = pendingBookingStore.get();
+
+    if (userId && pendingBooking) {
+      setOrders([
+        {
+          id: pendingBooking.bookingId,
+          status: pendingBooking.walletAddress ? "processing" : "pending",
+          total_amount: pendingBooking.totalPrice.toFixed(2),
+          created_at: pendingBooking.createdAt,
+          item_count: 1,
+        },
+      ]);
     }
+
+    setLoading(false);
   }, []);
 
   const loadOrderTracking = (orderId: string) => {
-    fetch(`http://127.0.0.1:8080/api/orders/${orderId}/tracking`)
-      .then((res) => res.json())
-      .then((data) => setSelectedOrder(data));
+    const pendingBooking = pendingBookingStore.get();
+    if (!pendingBooking || pendingBooking.bookingId !== orderId) {
+      return;
+    }
+
+    setSelectedOrder({
+      order_id: pendingBooking.bookingId,
+      status: pendingBooking.walletAddress ? "processing" : "pending",
+      created_at: pendingBooking.createdAt,
+      updated_at: new Date().toISOString(),
+      history: [
+        {
+          status: "booking_created",
+          notes: `Flight booked for ${pendingBooking.flightRoute}`,
+          created_at: pendingBooking.createdAt,
+        },
+        {
+          status: pendingBooking.walletAddress ? "payment_initialized" : "awaiting_payment",
+          notes: pendingBooking.walletAddress
+            ? `Payment wallet generated for ${pendingBooking.paymentMethod}`
+            : "Waiting for checkout to initialize payment.",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
   };
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      pending: "bg-yellow-500",
+      pending: "bg-blue-500",
       processing: "bg-blue-500",
       confirmed: "bg-green-500",
       shipped: "bg-purple-500",
       delivered: "bg-emerald-500",
       cancelled: "bg-red-500",
+      booking_created: "bg-blue-500",
+      awaiting_payment: "bg-blue-500",
+      payment_initialized: "bg-blue-500",
     };
     return colors[status.toLowerCase()] || "bg-gray-500";
   };
@@ -85,7 +117,7 @@ export default function OrderTrackingPage() {
                   <motion.div
                     key={order.id}
                     whileHover={{ scale: 1.02 }}
-                    className="bg-zinc-900 p-6 rounded-lg cursor-pointer border border-zinc-800 hover:border-blue-500"
+                    className="bg-zinc-900 p-6 rounded-lg cursor-pointer border border-[rgba(var(--accent),0.30)] hover:border-[rgb(var(--accent))]"
                     onClick={() => loadOrderTracking(order.id)}
                   >
                     <div className="flex justify-between items-start mb-2">
@@ -97,7 +129,7 @@ export default function OrderTrackingPage() {
                         {order.status}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-400">{order.item_count} items</p>
+                    <p className="text-sm text-gray-400">{order.item_count} item</p>
                     <p className="text-xs text-gray-500 mt-2">
                       {new Date(order.created_at).toLocaleDateString()}
                     </p>
@@ -111,7 +143,7 @@ export default function OrderTrackingPage() {
             {selectedOrder ? (
               <div>
                 <h2 className="text-2xl font-semibold mb-4">Order Details</h2>
-                <div className="bg-zinc-900 p-6 rounded-lg border border-zinc-800">
+                <div className="bg-zinc-900 p-6 rounded-lg border border-[rgba(var(--accent),0.30)]">
                   <div className="mb-6">
                     <p className="text-sm text-gray-400">Order ID</p>
                     <p className="text-lg font-mono">{selectedOrder.order_id}</p>
@@ -149,7 +181,7 @@ export default function OrderTrackingPage() {
                 </div>
               </div>
             ) : (
-              <div className="bg-zinc-900 p-12 rounded-lg border border-zinc-800 text-center">
+              <div className="bg-zinc-900 p-12 rounded-lg border border-[rgba(var(--accent),0.30)] text-center">
                 <p className="text-gray-400">Select an order to view tracking details</p>
               </div>
             )}
@@ -159,3 +191,4 @@ export default function OrderTrackingPage() {
     </div>
   );
 }
+

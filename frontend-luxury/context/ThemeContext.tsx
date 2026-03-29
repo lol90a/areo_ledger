@@ -1,8 +1,8 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useEffect } from 'react'
 
-type Theme = 'dark' | 'light'
+type Theme = 'dark'
 
 interface ThemeContextType {
   theme: Theme
@@ -12,25 +12,19 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark')
-
   useEffect(() => {
-    const saved = localStorage.getItem('theme') as Theme
-    if (saved) {
-      setTheme(saved)
-      document.documentElement.classList.toggle('light', saved === 'light')
-    }
+    document.documentElement.classList.remove('light')
+    document.documentElement.classList.add('dark')
+    localStorage.setItem('theme', 'dark')
   }, [])
 
-  const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(newTheme)
-    localStorage.setItem('theme', newTheme)
-    document.documentElement.classList.toggle('light', newTheme === 'light')
+  const value: ThemeContextType = {
+    theme: 'dark',
+    toggleTheme: () => {},
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   )

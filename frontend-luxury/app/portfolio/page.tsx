@@ -28,7 +28,7 @@ export default function PortfolioPage() {
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-gold" />
+        <Loader2 className="h-12 w-12 animate-spin text-white" />
       </div>
     )
   }
@@ -68,7 +68,7 @@ export default function PortfolioPage() {
           className="glass-card p-6"
         >
           <div className="text-sm text-muted mb-2">Current Value</div>
-          <div className="text-3xl font-bold font-display text-gold">{formatCurrency(totalCurrentValue)}</div>
+          <div className="text-3xl font-bold font-display text-white">{formatCurrency(totalCurrentValue)}</div>
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -94,7 +94,7 @@ export default function PortfolioPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-white/10">
+              <tr className="border-b border-[rgba(var(--accent),0.30)]">
                 <th className="text-left p-4 text-sm font-semibold text-muted">Asset</th>
                 <th className="text-left p-4 text-sm font-semibold text-muted">Type</th>
                 <th className="text-right p-4 text-sm font-semibold text-muted">Quantity</th>
@@ -117,19 +117,19 @@ export default function PortfolioPage() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.5 + index * 0.1 }}
-                    className="border-b border-white/10 hover:bg-white/5 transition-colors"
+                    className="border-b border-[rgba(var(--accent),0.30)] hover:bg-white/5 transition-colors"
                   >
                     <td className="p-4">
                       <div className="font-semibold">{asset.assetName}</div>
                     </td>
                     <td className="p-4">
-                      <span className="px-3 py-1 bg-gold/20 text-gold rounded-full text-xs">
+                      <span className="px-3 py-1 bg-[rgba(var(--accent),0.20)] text-white rounded-full text-xs">
                         {asset.assetType}
                       </span>
                     </td>
                     <td className="p-4 text-right font-semibold">{asset.tokensOwned}</td>
                     <td className="p-4 text-right">{formatCurrency(asset.investmentValue)}</td>
-                    <td className="p-4 text-right font-semibold text-gold">
+                    <td className="p-4 text-right font-semibold text-white">
                       {formatCurrency(asset.currentValue)}
                     </td>
                     <td className="p-4 text-right">
@@ -148,3 +148,6 @@ export default function PortfolioPage() {
     </div>
   )
 }
+
+
+

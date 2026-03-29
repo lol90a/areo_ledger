@@ -1,131 +1,193 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 10 10 10;
-    --foreground: 255 255 255;
-    --card: 20 20 20;
-    --card-foreground: 255 255 255;
-    --popover: 20 20 20;
-    --popover-foreground: 255 255 255;
-    --primary: 10 10 10;
+    --background: 3 4 7;
+    --foreground: 244 245 247;
+    --card: 8 10 16;
+    --card-foreground: 244 245 247;
+    --popover: 8 10 16;
+    --popover-foreground: 244 245 247;
+    --primary: 69 120 255;
     --primary-foreground: 255 255 255;
-    --secondary: 20 20 20;
-    --secondary-foreground: 255 255 255;
-    --muted: 156 163 175;
-    --muted-foreground: 255 255 255;
-    --accent: 212 175 55;
-    --accent-foreground: 10 10 10;
-    --destructive: 239 68 68;
-    --destructive-foreground: 255 255 255;
-    --border: 38 38 38;
-    --input: 38 38 38;
-    --ring: 212 175 55;
-    --radius: 0.5rem;
-  }
-
-  .light {
-    --background: 255 255 255;
-    --foreground: 10 10 10;
-    --card: 250 250 250;
-    --card-foreground: 10 10 10;
-    --popover: 250 250 250;
-    --popover-foreground: 10 10 10;
-    --primary: 255 255 255;
-    --primary-foreground: 10 10 10;
-    --secondary: 245 245 245;
-    --secondary-foreground: 10 10 10;
-    --muted: 107 114 128;
-    --muted-foreground: 10 10 10;
-    --accent: 212 175 55;
+    --secondary: 12 15 23;
+    --secondary-foreground: 244 245 247;
+    --muted: 244 245 247;
+    --muted-foreground: 244 245 247;
+    --accent: 69 120 255;
     --accent-foreground: 255 255 255;
     --destructive: 239 68 68;
     --destructive-foreground: 255 255 255;
-    --border: 229 229 229;
-    --input: 229 229 229;
-    --ring: 212 175 55;
+    --border: 69 120 255;
+    --input: 69 120 255;
+    --ring: 69 120 255;
+    --radius: 1rem;
+    --surface-float: 8 10 16;
+    --surface-highlight: 13 17 26;
+    --surface-muted: 4 6 10;
+    --frame-strong: 69 120 255;
+    --gold-strong: #4578ff;
+    --gold-soft: #6b94ff;
+    --button-foreground: 255 255 255;
+    --hero-orb: 69 120 255;
+    --hero-secondary: 78 216 255;
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top right, rgba(var(--hero-orb), 0.08), transparent 22rem),
+      radial-gradient(circle at 20% 10%, rgba(var(--hero-secondary), 0.04), transparent 18rem),
+      rgb(var(--background));
   }
-  .light body {
-    @apply bg-white text-[#0A0A0A];
-  }
+
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display;
+    @apply font-sans font-semibold tracking-[-0.04em];
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg;
+    @apply rounded-2xl border bg-[rgb(var(--surface-float))] transition-all duration-200;
+    border-color: rgba(var(--frame-strong), 0.7);
+    box-shadow: none;
   }
-  
-  .light .glass-card {
-    @apply bg-black/5 border-black/10;
+
+  .glass-card::before {
+    content: none;
   }
-  
+
+  .interactive-card {
+    @apply glass-card;
+  }
+
+  .interactive-card:hover {
+    border-color: rgba(var(--accent), 0.6);
+    background: rgba(var(--surface-highlight), 1);
+    transform: translateY(-2px);
+  }
+
   .gold-gradient {
-    @apply bg-gradient-to-r from-gold via-gold-light to-gold;
+    background: rgb(var(--accent));
   }
-  
+
   .luxury-shadow {
-    box-shadow: 0 20px 60px rgba(212, 175, 55, 0.15);
+    box-shadow: none;
   }
-  
+
   .text-gradient-gold {
-    @apply bg-gradient-to-r from-gold via-gold-light to-gold bg-clip-text text-transparent;
+    color: rgb(var(--foreground));
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .hero-grid {
+    background-image:
+      linear-gradient(rgba(var(--frame-strong), 0.2) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(var(--frame-strong), 0.2) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+    opacity: 0.2;
+  }
+
+  .section-shell {
+    @apply mx-auto w-full max-w-6xl px-5 md:px-8;
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.24em];
+    border-color: rgba(var(--frame-strong), 0.7);
+    background: transparent;
+    color: rgb(var(--muted));
+  }
+
+  .status-chip {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em];
+    border-color: rgba(var(--accent), 0.4);
+    background: rgba(var(--accent), 0.08);
+    color: rgb(var(--accent));
+  }
+
+  .dark-input {
+    @apply rounded-xl border px-4 py-3 text-foreground outline-none transition-all;
+    border-color: rgba(var(--frame-strong), 0.7);
+    background: rgb(var(--surface-float));
+  }
+
+  .dark-input:focus {
+    border-color: rgba(var(--accent), 0.7);
+    box-shadow: 0 0 0 2px rgba(var(--accent), 0.14);
   }
 }
 
 @layer utilities {
-  .animation-delay-200 {
-    animation-delay: 200ms;
-  }
-  .animation-delay-400 {
-    animation-delay: 400ms;
-  }
-  .animation-delay-600 {
-    animation-delay: 600ms;
-  }
+  .animation-delay-200 { animation-delay: 200ms; }
+  .animation-delay-400 { animation-delay: 400ms; }
+  .animation-delay-600 { animation-delay: 600ms; }
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #141414;
+  background: rgb(var(--surface-muted));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D4AF37;
+  background: rgb(var(--frame-strong));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #E5C158;
+  background: rgb(var(--accent));
 }
 
-/* Smooth scroll */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Selection */
 ::selection {
-  background-color: rgba(212, 175, 55, 0.3);
-  color: #FFFFFF;
+  background-color: rgba(var(--accent), 0.2);
+  color: rgb(var(--foreground));
+}
+
+
+@layer utilities {
+  .font-bold,
+  .font-semibold,
+  strong,
+  b {
+    color: rgb(255 255 255) !important;
+  }
+
+  .border,
+  .border-b,
+  .border-t,
+  .border-r,
+  .border-l,
+  .glass-card,
+  .interactive-card,
+  .eyebrow,
+  .dark-input,
+  .status-chip,
+  [class*='border-'] {
+    border-color: rgba(var(--accent), 0.7) !important;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -22px, 0);
+  }
 }

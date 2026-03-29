@@ -105,13 +105,13 @@ export default function DashboardPage() {
           ].map((activity, index) => (
             <div
               key={index}
-              className="flex items-center justify-between py-3 border-b border-white/10 last:border-0"
+              className="flex items-center justify-between py-3 border-b border-[rgba(var(--accent),0.30)] last:border-0"
             >
               <div>
                 <div className="font-semibold">{activity.action} - {activity.asset}</div>
                 <div className="text-sm text-muted">{activity.time}</div>
               </div>
-              <div className="text-gold font-semibold">{activity.amount}</div>
+              <div className="text-white font-semibold">{activity.amount}</div>
             </div>
           ))}
         </div>
@@ -119,3 +119,6 @@ export default function DashboardPage() {
     </div>
   )
 }
+
+
+
