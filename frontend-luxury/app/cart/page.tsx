@@ -43,7 +43,7 @@ export default function CartPage() {
             className="mb-12"
           >
             <h1 className="font-display text-5xl font-bold mb-4">
-              Shopping <span className="text-gold">Cart</span>
+              Shopping <span className="text-white">Cart</span>
             </h1>
             <p className="text-xl text-muted">
               {items.length} {items.length === 1 ? 'item' : 'items'} in your cart
@@ -98,7 +98,7 @@ export default function CartPage() {
                           </button>
                         </div>
                         
-                        <div className="text-2xl font-bold text-gold">
+                        <div className="text-2xl font-bold text-white">
                           ${item.price.toLocaleString()}
                         </div>
                       </div>
@@ -124,10 +124,10 @@ export default function CartPage() {
                       <span className="text-muted">Service Fee (5%)</span>
                       <span className="font-semibold">${(total * 0.05).toLocaleString()}</span>
                     </div>
-                    <div className="border-t border-white/10 pt-4">
+                    <div className="border-t border-[rgba(var(--accent),0.30)] pt-4">
                       <div className="flex justify-between text-2xl font-bold">
                         <span>Total</span>
-                        <span className="text-gold">${(total * 1.05).toLocaleString()}</span>
+                        <span className="text-white">${(total * 1.05).toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
@@ -136,7 +136,7 @@ export default function CartPage() {
                     <div className="text-sm text-muted mb-3">Crypto Equivalent:</div>
                     {loading ? (
                       <div className="flex justify-center py-4">
-                        <Loader2 className="h-6 w-6 animate-spin text-gold" />
+                        <Loader2 className="h-6 w-6 animate-spin text-white" />
                       </div>
                     ) : (
                       <div className="space-y-2 text-sm">
@@ -166,3 +166,6 @@ export default function CartPage() {
     </div>
   )
 }
+
+
+

@@ -3,10 +3,10 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 
 const data = [
-  { name: 'Private Jets', value: 40, color: '#D4AF37' },
-  { name: 'Yachts', value: 30, color: '#E5C158' },
-  { name: 'Real Estate', value: 20, color: '#B8941F' },
-  { name: 'Luxury Cars', value: 10, color: '#9CA3AF' },
+  { name: 'Private Jets', value: 40, color: '#4578ff' },
+  { name: 'Yachts', value: 30, color: '#6b94ff' },
+  { name: 'Real Estate', value: 20, color: '#9bb7ff' },
+  { name: 'Luxury Cars', value: 10, color: '#dbe7ff' },
 ]
 
 export function PortfolioChart() {
@@ -39,3 +39,4 @@ export function PortfolioChart() {
     </ResponsiveContainer>
   )
 }
+

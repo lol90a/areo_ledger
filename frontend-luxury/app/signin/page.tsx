@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Mail, Lock, User } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { api } from '@/lib/api'
 
 export default function SignInPage() {
   const router = useRouter()
@@ -14,62 +15,36 @@ export default function SignInPage() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (isSignUp) {
-      // Signup logic
-      try {
-        const response = await fetch('http://127.0.0.1:8080/api/users/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password })
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          localStorage.setItem('user', JSON.stringify(data))
-          localStorage.setItem('userId', data.id)
-          document.cookie = `user=${JSON.stringify(data)}; path=/; max-age=86400`
-          
-          alert(`Account created successfully! Welcome ${name}!`)
-          setIsSignUp(false)
-          
-          setTimeout(() => {
-            router.push(data.role === 'admin' ? '/admin' : '/dashboard')
-          }, 500)
-        } else {
-          const error = await response.json()
-          alert(`Signup failed: ${error.message || 'Please try again'}`)
-        }
-      } catch (error) {
-        console.error('Signup error:', error)
-        alert('Signup failed. Please check if the backend is running.')
+    setSubmitting(true)
+
+    try {
+      const response = isSignUp
+        ? await api.auth.signup({ name, email, password })
+        : await api.auth.login({ email, password })
+
+      const user = response.data
+      if (isAdmin && user.role !== 'admin') {
+        alert('This account does not have admin access.')
+        setSubmitting(false)
+        return
       }
-    } else {
-      // Login logic
-      try {
-        const response = await fetch('http://127.0.0.1:8080/api/users/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          localStorage.setItem('user', JSON.stringify(data))
-          localStorage.setItem('userId', data.id)
-          document.cookie = `user=${JSON.stringify(data)}; path=/; max-age=86400`
-          router.push(data.role === 'admin' ? '/admin' : '/dashboard')
-        } else {
-          const error = await response.json()
-          alert(`Login failed: ${error.message || 'Invalid credentials'}`)
-        }
-      } catch (error) {
-        console.error('Login error:', error)
-        alert('Login failed. Please check if the backend is running.')
+
+      if (isSignUp) {
+        alert(`Account created successfully! Welcome ${user.name}!`)
+        setIsSignUp(false)
       }
+
+      router.push(user.role === 'admin' ? '/admin' : '/dashboard')
+    } catch (error: any) {
+      console.error(isSignUp ? 'Signup error:' : 'Login error:', error)
+      const message = error?.response?.data?.error || error?.response?.data?.message || 'Please check if the backend is running and try again.'
+      alert(`${isSignUp ? 'Signup' : 'Login'} failed: ${message}`)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -83,7 +58,7 @@ export default function SignInPage() {
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
             <h1 className="font-display text-4xl font-bold mb-2">
-              Aero<span className="text-gold">Ledger</span>
+              Aero<span className="text-white">Ledger</span>
             </h1>
           </Link>
           <p className="text-muted">
@@ -96,7 +71,7 @@ export default function SignInPage() {
             <button
               onClick={() => setIsAdmin(false)}
               className={`flex-1 py-2 rounded-lg transition-all ${
-                !isAdmin ? 'bg-gold text-primary font-semibold' : 'glass-card'
+                !isAdmin ? 'bg-[rgb(var(--accent))] text-white font-semibold' : 'glass-card'
               }`}
             >
               User
@@ -104,7 +79,7 @@ export default function SignInPage() {
             <button
               onClick={() => setIsAdmin(true)}
               className={`flex-1 py-2 rounded-lg transition-all ${
-                isAdmin ? 'bg-gold text-primary font-semibold' : 'glass-card'
+                isAdmin ? 'bg-[rgb(var(--accent))] text-white font-semibold' : 'glass-card'
               }`}
             >
               Admin
@@ -123,7 +98,7 @@ export default function SignInPage() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="John Doe"
                     required
-                    className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
+                    className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
                   />
                 </div>
               </div>
@@ -139,7 +114,7 @@ export default function SignInPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={isAdmin ? 'admin@aeroledger.com' : 'you@example.com'}
                   required
-                  className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
                 />
               </div>
             </div>
@@ -152,22 +127,22 @@ export default function SignInPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="********"
                   required
-                  className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
                 />
               </div>
             </div>
 
-            <Button type="submit" className="w-full py-6 text-lg">
-              {isSignUp ? 'Sign Up' : 'Sign In'}
+            <Button type="submit" className="w-full py-6 text-lg" disabled={submitting}>
+              {submitting ? 'Please wait...' : isSignUp ? 'Sign Up' : 'Sign In'}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
             <button
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-gold hover:underline"
+              className="text-white hover:underline"
             >
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
             </button>
@@ -177,3 +152,5 @@ export default function SignInPage() {
     </div>
   )
 }
+
+

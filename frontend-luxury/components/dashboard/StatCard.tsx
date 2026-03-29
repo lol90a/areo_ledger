@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { LucideIcon } from 'lucide-react'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
+import { formatPercentage } from '@/lib/utils'
 
 interface StatCardProps {
   title: string
@@ -13,27 +13,28 @@ interface StatCardProps {
 }
 
 export function StatCard({ title, value, change, icon: Icon, index = 0 }: StatCardProps) {
-  const isPositive = change && change >= 0
+  const isPositive = change !== undefined ? change >= 0 : undefined
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1 }}
-      className="glass-card p-6 hover:bg-white/10 transition-all"
+      transition={{ delay: index * 0.08 }}
+      whileHover={{ y: -2 }}
+      className="interactive-card p-6"
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="p-3 rounded-lg bg-gold/20">
-          <Icon className="h-6 w-6 text-gold" />
+      <div className="mb-5 flex items-start justify-between">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[rgba(var(--frame-strong),0.7)] bg-[rgb(var(--surface-highlight))]">
+          <Icon className="h-5 w-5 text-white" />
         </div>
         {change !== undefined && (
-          <span className={`text-sm font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+          <span className={`text-xs font-medium ${isPositive ? 'text-[#7be0c7]' : 'text-red-400'}`}>
             {formatPercentage(change)}
           </span>
         )}
       </div>
-      <div className="text-sm text-muted mb-1">{title}</div>
-      <div className="text-3xl font-bold font-display">{value}</div>
+      <div className="text-sm text-muted">{title}</div>
+      <div className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{value}</div>
     </motion.div>
   )
 }

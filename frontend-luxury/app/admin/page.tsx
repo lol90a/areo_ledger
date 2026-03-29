@@ -80,7 +80,7 @@ export default function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-[rgba(var(--accent),0.30)]">
                   <th className="text-left p-3 text-sm font-semibold text-muted">Booking ID</th>
                   <th className="text-left p-3 text-sm font-semibold text-muted">Status</th>
                   <th className="text-right p-3 text-sm font-semibold text-muted">Amount</th>
@@ -89,18 +89,18 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {bookings?.slice(0, 5).map((booking: any) => (
-                  <tr key={booking.id} className="border-b border-white/10">
+                  <tr key={booking.id} className="border-b border-[rgba(var(--accent),0.30)]">
                     <td className="p-3 font-mono text-sm">{booking.id.substring(0, 8)}...</td>
                     <td className="p-3">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                         booking.status === 'confirmed' 
                           ? 'bg-green-500/20 text-green-500' 
-                          : 'bg-yellow-500/20 text-yellow-500'
+                          : 'bg-blue-500/20 text-blue-400'
                       }`}>
                         {booking.status}
                       </span>
                     </td>
-                    <td className="p-3 text-right font-semibold text-gold">
+                    <td className="p-3 text-right font-semibold text-white">
                       {formatCurrency(booking.total_price)}
                     </td>
                     <td className="p-3 text-sm text-muted">
@@ -128,7 +128,7 @@ export default function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-[rgba(var(--accent),0.30)]">
                   <th className="text-left p-3 text-sm font-semibold text-muted">Payment ID</th>
                   <th className="text-left p-3 text-sm font-semibold text-muted">Chain</th>
                   <th className="text-left p-3 text-sm font-semibold text-muted">Token</th>
@@ -138,18 +138,18 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {payments?.slice(0, 5).map((payment: any) => (
-                  <tr key={payment.id} className="border-b border-white/10">
+                  <tr key={payment.id} className="border-b border-[rgba(var(--accent),0.30)]">
                     <td className="p-3 font-mono text-sm">{payment.id.substring(0, 8)}...</td>
                     <td className="p-3">{payment.chain}</td>
                     <td className="p-3 font-semibold">{payment.token}</td>
-                    <td className="p-3 text-right font-semibold text-gold">
+                    <td className="p-3 text-right font-semibold text-white">
                       {formatCurrency(payment.amount)}
                     </td>
                     <td className="p-3">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                         payment.status === 'confirmed' 
                           ? 'bg-green-500/20 text-green-500' 
-                          : 'bg-yellow-500/20 text-yellow-500'
+                          : 'bg-blue-500/20 text-blue-400'
                       }`}>
                         {payment.status}
                       </span>
@@ -164,3 +164,6 @@ export default function AdminPage() {
     </div>
   )
 }
+
+
+

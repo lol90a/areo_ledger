@@ -82,7 +82,7 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                         <MapPin className="h-4 w-4 mr-1" />
                         {asset.location}
                       </span>
-                      <span className="px-3 py-1 bg-gold/20 text-gold rounded-full text-sm">
+                      <span className="px-3 py-1 bg-[rgba(var(--accent),0.20)] text-white rounded-full text-sm">
                         {asset.type}
                       </span>
                     </div>
@@ -101,19 +101,19 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                 {/* Quick Stats */}
                 <div className="grid grid-cols-3 gap-4 mb-8">
                   <div className="glass-card p-4 text-center">
-                    <div className="text-2xl font-bold text-gold mb-1">
+                    <div className="text-2xl font-bold text-white mb-1">
                       {formatCurrency(asset.totalValue)}
                     </div>
                     <div className="text-sm text-muted">Total Value</div>
                   </div>
                   <div className="glass-card p-4 text-center">
-                    <div className="text-2xl font-bold text-gold mb-1">
+                    <div className="text-2xl font-bold text-white mb-1">
                       {formatNumber(asset.totalTokens)}
                     </div>
                     <div className="text-sm text-muted">Total Tokens</div>
                   </div>
                   <div className="glass-card p-4 text-center">
-                    <div className="text-2xl font-bold text-gold mb-1">
+                    <div className="text-2xl font-bold text-white mb-1">
                       {((asset.totalTokens - asset.availableTokens) / asset.totalTokens * 100).toFixed(0)}%
                     </div>
                     <div className="text-sm text-muted">Funded</div>
@@ -125,7 +125,7 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                   <h3 className="font-display text-2xl font-bold mb-4">Specifications</h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     {Object.entries(asset.specifications).map(([key, value]) => (
-                      <div key={key} className="flex justify-between py-3 border-b border-white/10">
+                      <div key={key} className="flex justify-between py-3 border-b border-[rgba(var(--accent),0.30)]">
                         <span className="text-muted">{key}</span>
                         <span className="font-semibold">{value}</span>
                       </div>
@@ -149,7 +149,7 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                   {/* Token Price */}
                   <div>
                     <div className="text-sm text-muted mb-1">Token Price</div>
-                    <div className="text-3xl font-bold text-gold">
+                    <div className="text-3xl font-bold text-white">
                       {formatCurrency(asset.tokenPrice)}
                     </div>
                   </div>
@@ -162,7 +162,7 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                     </div>
                     <div className="w-full bg-white/10 rounded-full h-2 mt-2">
                       <div
-                        className="bg-gold h-2 rounded-full"
+                        className="bg-[rgb(var(--accent))] h-2 rounded-full"
                         style={{ width: `${((asset.totalTokens - asset.availableTokens) / asset.totalTokens) * 100}%` }}
                       />
                     </div>
@@ -177,7 +177,7 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                       max={asset.availableTokens}
                       value={tokenAmount}
                       onChange={(e) => setTokenAmount(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full glass-card px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
+                      className="w-full glass-card px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
                     />
                   </div>
 
@@ -189,7 +189,7 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">Payment Method</span>
-                      <span className="font-semibold text-gold">Crypto</span>
+                      <span className="font-semibold text-white">Crypto</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">Processing Fee</span>
@@ -216,3 +216,6 @@ export default function AssetDetailPage({ params }: { params: { id: string } }) 
     </div>
   )
 }
+
+
+

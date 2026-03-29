@@ -45,7 +45,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
         <Navbar />
         <main className="pt-32 pb-20 px-4">
           <div className="container mx-auto max-w-7xl flex justify-center items-center h-96">
-            <Loader2 className="h-12 w-12 animate-spin text-gold" />
+            <Loader2 className="h-12 w-12 animate-spin text-white" />
           </div>
         </main>
       </div>
@@ -123,7 +123,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               className="space-y-8"
             >
               <div>
-                <div className="inline-block px-4 py-2 bg-gold/20 text-gold rounded-full text-sm font-semibold mb-4">
+                <div className="inline-block px-4 py-2 bg-[rgba(var(--accent),0.20)] text-white rounded-full text-sm font-semibold mb-4">
                   {item.category}
                 </div>
                 <h1 className="font-display text-5xl font-bold mb-4">{item.name}</h1>
@@ -135,7 +135,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               <div className="glass-card p-8 luxury-shadow">
                 <div className="mb-6">
                   <div className="text-sm text-muted mb-2 uppercase tracking-wider">Price</div>
-                  <div className="text-5xl font-display font-bold text-gold mb-6">
+                  <div className="text-5xl font-display font-bold text-white mb-6">
                     ${item.price.toLocaleString('en-US')}
                   </div>
                   <div className="text-sm text-muted mb-3 uppercase tracking-wider">Cryptocurrency Equivalent</div>
@@ -146,7 +146,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                           <span className="text-2xl">{crypto.symbol}</span>
                           <span className="font-semibold">{key}</span>
                         </div>
-                        <div className="text-gold font-bold text-lg">
+                        <div className="text-white font-bold text-lg">
                           {(item.price / crypto.price).toFixed(key === 'BTC' ? 4 : key === 'ETH' ? 3 : 2)}
                         </div>
                         <div className="text-xs text-muted">{crypto.name}</div>
@@ -175,10 +175,10 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
               <div className="glass-card p-8">
                 <h3 className="font-display text-2xl font-bold mb-6">Key Features</h3>
                 <ul className="space-y-3">
-                  {item.features.map((feature, index) => (
+                  {item.features.map((feature: string, index: number) => (
                     <li key={index} className="flex items-start gap-3">
-                      <div className="bg-gold/20 rounded-full p-1 mt-1">
-                        <Check className="h-4 w-4 text-gold" />
+                      <div className="bg-[rgba(var(--accent),0.20)] rounded-full p-1 mt-1">
+                        <Check className="h-4 w-4 text-white" />
                       </div>
                       <span className="text-lg">{feature}</span>
                     </li>
@@ -192,3 +192,5 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
     </div>
   )
 }
+
+

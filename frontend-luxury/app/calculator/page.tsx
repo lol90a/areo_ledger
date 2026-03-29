@@ -97,7 +97,7 @@ export default function CalculatorPage() {
       <div className="min-h-screen">
         <Navbar />
         <main className="pt-32 pb-20 px-4 flex items-center justify-center">
-          <Loader2 className="h-12 w-12 animate-spin text-gold" />
+          <Loader2 className="h-12 w-12 animate-spin text-white" />
         </main>
       </div>
     )
@@ -115,7 +115,7 @@ export default function CalculatorPage() {
             className="mb-12 text-center"
           >
             <h1 className="font-display text-5xl md:text-6xl font-bold mb-4">
-              Crypto <span className="text-gold">Calculator</span>
+              Crypto <span className="text-white">Calculator</span>
             </h1>
             <p className="text-xl text-muted">
               Convert between all world currencies and cryptocurrencies
@@ -139,7 +139,7 @@ export default function CalculatorPage() {
                     if (!fiatRates[fromCurrency]) setFromCurrency('USD')
                   }}
                   className={`flex-1 py-2 rounded-lg transition-all ${
-                    fromType === 'fiat' ? 'bg-gold text-primary font-semibold' : 'glass-card'
+                    fromType === 'fiat' ? 'bg-[rgb(var(--accent))] text-white font-semibold' : 'glass-card'
                   }`}
                 >
                   Fiat Currency
@@ -150,7 +150,7 @@ export default function CalculatorPage() {
                     if (!cryptoPrices[fromCurrency]) setFromCurrency('BTC')
                   }}
                   className={`flex-1 py-2 rounded-lg transition-all ${
-                    fromType === 'crypto' ? 'bg-gold text-primary font-semibold' : 'glass-card'
+                    fromType === 'crypto' ? 'bg-[rgb(var(--accent))] text-white font-semibold' : 'glass-card'
                   }`}
                 >
                   Cryptocurrency
@@ -164,14 +164,14 @@ export default function CalculatorPage() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="Enter amount"
-                    className="w-full glass-card px-4 py-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold text-2xl font-bold"
+                    className="w-full glass-card px-4 py-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] text-2xl font-bold"
                   />
                 </div>
                 <div>
                   <select
                     value={fromCurrency}
                     onChange={(e) => setFromCurrency(e.target.value)}
-                    className="w-full glass-card px-4 py-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold text-lg font-semibold bg-[#0A0A0A] text-white"
+                    className="w-full glass-card px-4 py-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] text-lg font-semibold bg-[#0A0A0A] text-white"
                     style={{ color: 'white' }}
                   >
                     {Object.entries(fromOptions).map(([code, data]: [string, any]) => (
@@ -190,7 +190,7 @@ export default function CalculatorPage() {
                 onClick={swapCurrencies}
                 className="glass-card p-4 rounded-full hover:bg-white/10 transition-all hover:rotate-180 duration-300"
               >
-                <ArrowRightLeft className="h-6 w-6 text-gold" />
+                <ArrowRightLeft className="h-6 w-6 text-white" />
               </button>
             </div>
 
@@ -205,7 +205,7 @@ export default function CalculatorPage() {
                     if (!fiatRates[toCurrency]) setToCurrency('USD')
                   }}
                   className={`flex-1 py-2 rounded-lg transition-all ${
-                    toType === 'fiat' ? 'bg-gold text-primary font-semibold' : 'glass-card'
+                    toType === 'fiat' ? 'bg-[rgb(var(--accent))] text-white font-semibold' : 'glass-card'
                   }`}
                 >
                   Fiat Currency
@@ -216,7 +216,7 @@ export default function CalculatorPage() {
                     if (!cryptoPrices[toCurrency]) setToCurrency('BTC')
                   }}
                   className={`flex-1 py-2 rounded-lg transition-all ${
-                    toType === 'crypto' ? 'bg-gold text-primary font-semibold' : 'glass-card'
+                    toType === 'crypto' ? 'bg-[rgb(var(--accent))] text-white font-semibold' : 'glass-card'
                   }`}
                 >
                   Cryptocurrency
@@ -227,7 +227,7 @@ export default function CalculatorPage() {
                 <select
                   value={toCurrency}
                   onChange={(e) => setToCurrency(e.target.value)}
-                  className="w-full glass-card px-4 py-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold text-lg font-semibold mb-4 bg-[#0A0A0A] text-white"
+                  className="w-full glass-card px-4 py-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))] text-lg font-semibold mb-4 bg-[#0A0A0A] text-white"
                   style={{ color: 'white' }}
                 >
                   {Object.entries(toOptions).map(([code, data]: [string, any]) => (
@@ -240,9 +240,9 @@ export default function CalculatorPage() {
             </div>
 
             {/* Result */}
-            <div className="glass-card p-8 bg-gold/10 border-gold/30">
+            <div className="glass-card p-8 bg-[rgba(var(--accent),0.10)] border-[rgba(var(--accent),0.30)]">
               <div className="text-sm text-muted mb-2 uppercase tracking-wider">Result</div>
-              <div className="text-5xl font-display font-bold text-gold mb-2">
+              <div className="text-5xl font-display font-bold text-white mb-2">
                 {result.toFixed(toType === 'crypto' ? 8 : 2)}
               </div>
               <div className="text-xl text-muted">
@@ -259,7 +259,7 @@ export default function CalculatorPage() {
             className="mt-8 glass-card p-8"
           >
             <h3 className="font-display text-2xl font-bold mb-6 flex items-center gap-2">
-              <TrendingUp className="h-6 w-6 text-gold" />
+              <TrendingUp className="h-6 w-6 text-white" />
               Live Crypto Prices (USD)
             </h3>
             <div className="grid md:grid-cols-3 gap-4">
@@ -269,7 +269,7 @@ export default function CalculatorPage() {
                     <span className="text-2xl">{data.symbol || code}</span>
                     <span className="font-bold">{code}</span>
                   </div>
-                  <div className="text-gold font-bold text-xl">
+                  <div className="text-white font-bold text-xl">
                     ${(data.price || 0).toLocaleString()}
                   </div>
                   <div className="text-xs text-muted">{data.name}</div>
@@ -282,3 +282,5 @@ export default function CalculatorPage() {
     </div>
   )
 }
+
+

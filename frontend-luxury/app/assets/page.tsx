@@ -55,7 +55,7 @@ export default function AssetsPage() {
             className="mb-12"
           >
             <h1 className="font-display text-5xl md:text-6xl font-bold mb-4">
-              Luxury Asset <span className="text-gold">Marketplace</span>
+              Luxury Asset <span className="text-white">Marketplace</span>
             </h1>
             <p className="text-xl text-muted max-w-2xl">
               Purchase luxury assets with cryptocurrency - BTC, ETH, USDT, USDC, SOL, BNB
@@ -77,7 +77,7 @@ export default function AssetsPage() {
                 placeholder="Search assets..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold"
+                className="w-full glass-card pl-12 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent))]"
               />
             </div>
 
@@ -89,7 +89,7 @@ export default function AssetsPage() {
                   onClick={() => setSelectedType(type)}
                   className={`px-6 py-2 rounded-lg transition-all ${
                     selectedType === type
-                      ? 'bg-gold text-primary font-semibold'
+                      ? 'bg-[rgb(var(--accent))] text-white font-semibold'
                       : 'glass-card hover:bg-white/10'
                   }`}
                 >
@@ -129,3 +129,5 @@ export default function AssetsPage() {
     </div>
   )
 }
+
+

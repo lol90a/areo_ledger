@@ -26,52 +26,52 @@ export function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="w-64 glass-card border-r border-white/10 flex flex-col">
-      {/* Logo */}
-      <div className="p-6 border-b border-white/10">
-        <Link href="/" className="flex items-center space-x-2">
-          <div className="w-10 h-10 bg-gradient-gold rounded-lg flex items-center justify-center">
-            <span className="text-primary font-bold text-xl">A</span>
+    <aside className="flex w-64 flex-col border-r border-[rgba(var(--frame-strong),0.7)] bg-[rgb(var(--surface-float))]">
+      <div className="border-b border-[rgba(var(--frame-strong),0.7)] p-6">
+        <Link href="/" className="flex items-center space-x-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[rgb(var(--accent))] text-sm font-semibold text-white">
+            A
           </div>
-          <span className="font-display text-xl font-bold">AeroLedger</span>
+          <div>
+            <div className="text-lg font-semibold tracking-[-0.03em]">AeroLedger</div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-muted">Workspace</div>
+          </div>
         </Link>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 space-y-2 p-4">
         {menuItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href
-          
+
           return (
             <Link
               key={item.name}
               href={item.href}
               className={cn(
-                'flex items-center space-x-3 px-4 py-3 rounded-lg transition-all',
+                'flex items-center space-x-3 rounded-xl px-4 py-3 text-sm transition-all',
                 isActive
-                  ? 'bg-gold text-primary font-semibold'
-                  : 'text-muted hover:bg-white/5 hover:text-white'
+                  ? 'border border-[rgba(var(--accent),0.35)] bg-[rgba(var(--accent),0.08)] text-white'
+                  : 'text-muted hover:bg-[rgb(var(--surface-highlight))] hover:text-white'
               )}
             >
-              <Icon className="h-5 w-5" />
+              <Icon className={cn('h-5 w-5', isActive ? 'text-white' : '')} />
               <span>{item.name}</span>
             </Link>
           )
         })}
       </nav>
 
-      {/* User Section */}
-      <div className="p-4 border-t border-white/10">
-        <div className="flex items-center space-x-3 px-4 py-3">
-          <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center">
-            <span className="text-gold font-semibold">JD</span>
+      <div className="border-t border-[rgba(var(--frame-strong),0.7)] p-4">
+        <div className="flex items-center space-x-3 rounded-xl border border-[rgba(var(--frame-strong),0.7)] px-4 py-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(var(--accent),0.1)] text-sm font-semibold text-white">
+            JD
           </div>
           <div className="flex-1">
-            <div className="font-semibold text-sm">John Doe</div>
+            <div className="text-sm font-medium">John Doe</div>
             <div className="text-xs text-muted">Investor</div>
           </div>
-          <button className="text-muted hover:text-white">
+          <button className="text-muted transition-colors hover:text-white">
             <LogOut className="h-5 w-5" />
           </button>
         </div>

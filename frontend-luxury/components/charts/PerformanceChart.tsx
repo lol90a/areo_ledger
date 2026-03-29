@@ -28,11 +28,13 @@ export function PerformanceChart() {
         <Line
           type="monotone"
           dataKey="value"
-          stroke="#D4AF37"
+          stroke="#4578ff"
           strokeWidth={3}
-          dot={{ fill: '#D4AF37', r: 4 }}
+          dot={{ fill: '#4578ff', r: 4 }}
         />
       </LineChart>
     </ResponsiveContainer>
   )
 }
+
+
