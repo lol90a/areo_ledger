@@ -15,7 +15,10 @@ pub fn user_id_from_claims(claims: &Claims) -> Result<Uuid, DomainError> {
     Uuid::parse_str(&claims.sub).map_err(|_| DomainError::Unauthorized)
 }
 
-pub fn require_same_user_or_admin(req: &HttpRequest, target_user_id: &Uuid) -> Result<Claims, DomainError> {
+pub fn require_same_user_or_admin(
+    req: &HttpRequest,
+    target_user_id: &Uuid,
+) -> Result<Claims, DomainError> {
     let claims = claims_from_request(req)?;
     let actor_id = user_id_from_claims(&claims)?;
     if claims.role == "admin" || actor_id == *target_user_id {
@@ -24,4 +27,3 @@ pub fn require_same_user_or_admin(req: &HttpRequest, target_user_id: &Uuid) -> R
         Err(DomainError::Unauthorized)
     }
 }
-

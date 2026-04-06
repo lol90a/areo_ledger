@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS payments (
     wallet_address  TEXT NOT NULL,
     sender_wallet   TEXT,
     tx_hash         TEXT,
+    payment_proof_path         TEXT,
+    payment_proof_content_type VARCHAR(100),
+    payment_proof_uploaded_at  TIMESTAMP,
     status          VARCHAR(50) DEFAULT 'pending',
     verified        BOOLEAN DEFAULT FALSE,
     verified_at     TIMESTAMP,
@@ -288,6 +291,10 @@ WHERE p.booking_id IS NOT NULL
       dup.created_at > p.created_at
       OR (dup.created_at = p.created_at AND dup.id > p.id)
   );
+
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof_path TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof_content_type VARCHAR(100);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof_uploaded_at TIMESTAMP;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_booking_unique ON payments(booking_id) WHERE booking_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payments_tx_hash     ON payments(tx_hash);

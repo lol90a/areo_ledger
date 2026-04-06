@@ -1,6 +1,6 @@
-use uuid::Uuid;
 use crate::domain::entities::transaction::Transaction;
 use crate::shared::errors::DomainError;
+use uuid::Uuid;
 
 #[async_trait::async_trait]
 pub trait TransactionRepository: Send + Sync {

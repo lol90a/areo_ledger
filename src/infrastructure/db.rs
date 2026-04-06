@@ -1,4 +1,4 @@
-use deadpool_postgres::{Config, Pool, Runtime, PoolError};
+use deadpool_postgres::{Config, Pool, PoolError, Runtime};
 use tokio_postgres::NoTls;
 
 pub type DbPool = Pool;
@@ -18,10 +18,10 @@ pub fn init_pool(database_url: &str) -> DbPool {
         for part in database_url.split_whitespace() {
             if let Some((key, val)) = part.split_once('=') {
                 match key {
-                    "host"     => cfg.host     = Some(val.to_string()),
-                    "port"     => cfg.port     = val.parse().ok(),
-                    "dbname"   => cfg.dbname   = Some(val.to_string()),
-                    "user"     => cfg.user     = Some(val.to_string()),
+                    "host" => cfg.host = Some(val.to_string()),
+                    "port" => cfg.port = val.parse().ok(),
+                    "dbname" => cfg.dbname = Some(val.to_string()),
+                    "user" => cfg.user = Some(val.to_string()),
                     "password" => cfg.password = Some(val.to_string()),
                     _ => {}
                 }
@@ -38,9 +38,8 @@ pub fn init_pool(database_url: &str) -> DbPool {
 
 pub async fn run_migrations(pool: &DbPool) -> Result<(), Box<dyn std::error::Error>> {
     let conn = pool.get().await?;
-    conn.batch_execute(include_str!("../../migrations/complete_schema.sql")).await?;
+    conn.batch_execute(include_str!("../../migrations/complete_schema.sql"))
+        .await?;
     log::info!("Database migrations applied successfully.");
     Ok(())
 }
-
-

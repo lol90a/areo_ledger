@@ -10,10 +10,15 @@ pub struct PgUserRepository {
 }
 
 impl PgUserRepository {
-    pub fn new(pool: DbPool) -> Self { Self { pool } }
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
+    }
 
     async fn client(&self) -> Result<deadpool_postgres::Client, DomainError> {
-        self.pool.get().await.map_err(|e| InfraError::Database(e.to_string()).into())
+        self.pool
+            .get()
+            .await
+            .map_err(|e| InfraError::Database(e.to_string()).into())
     }
 
     fn row_to_user(row: &tokio_postgres::Row) -> User {
@@ -37,7 +42,8 @@ impl UserRepository for PgUserRepository {
                 "SELECT id, email, name, role, password_hash, wallet_address_eth \
                  FROM users WHERE id = $1",
                 &[id],
-            ).await
+            )
+            .await
             .map_err(|_| DomainError::NotFound(format!("User {}", id)))?;
         Ok(Self::row_to_user(&row))
     }
@@ -49,7 +55,8 @@ impl UserRepository for PgUserRepository {
                 "SELECT id, email, name, role, password_hash, wallet_address_eth \
                  FROM users WHERE email = $1",
                 &[&email],
-            ).await
+            )
+            .await
             .map_err(|_| DomainError::NotFound(format!("User with email {}", email)))?;
         Ok(Self::row_to_user(&row))
     }
@@ -57,17 +64,28 @@ impl UserRepository for PgUserRepository {
     async fn save(&self, user: &User) -> Result<(), DomainError> {
         let client = self.client().await?;
         let role = user.role.as_str().to_string();
-        client.execute(
-            "INSERT INTO users (id, email, name, role, password_hash) \
+        client
+            .execute(
+                "INSERT INTO users (id, email, name, role, password_hash) \
              VALUES ($1, $2, $3, $4, $5)",
-            &[&user.id, &user.email, &user.name, &role, &user.password_hash],
-        ).await.map_err(|e| InfraError::Database(e.to_string()))?;
+                &[
+                    &user.id,
+                    &user.email,
+                    &user.name,
+                    &role,
+                    &user.password_hash,
+                ],
+            )
+            .await
+            .map_err(|e| InfraError::Database(e.to_string()))?;
         Ok(())
     }
 
     async fn count(&self) -> Result<i64, DomainError> {
         let client = self.client().await?;
-        let row = client.query_one("SELECT COUNT(*) FROM users", &[]).await
+        let row = client
+            .query_one("SELECT COUNT(*) FROM users", &[])
+            .await
             .map_err(|e| InfraError::Database(e.to_string()))?;
         Ok(row.get(0))
     }

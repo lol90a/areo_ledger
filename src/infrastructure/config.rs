@@ -1,33 +1,37 @@
 use std::env;
 
+#[derive(Clone)]
 pub struct AppConfig {
-    pub database_url:      String,
-    pub jwt_secret:        String,
-    pub host:              String,
-    pub port:              u16,
-    pub wallet_btc:        String,
-    pub wallet_eth:        String,
-    pub wallet_sol:        String,
-    pub wallet_usdt:       String,
-    pub wallet_usdc:       String,
-    pub wallet_bnb:        String,
+    pub database_url: String,
+    pub jwt_secret: String,
+    pub host: String,
+    pub port: u16,
+    pub wallet_btc: String,
+    pub wallet_eth: String,
+    pub wallet_sol: String,
+    pub wallet_usdt: String,
+    pub wallet_usdc: String,
+    pub wallet_bnb: String,
     pub etherscan_api_key: String,
-    pub bscscan_api_key:   String,
-    pub solana_rpc_url:    String,
-    pub bitcoin_api_base:  String,
-    pub frontend_url:      String,
-    pub app_env:           String,
-    pub run_migrations:    bool,
+    pub bscscan_api_key: String,
+    pub solana_rpc_url: String,
+    pub bitcoin_api_base: String,
+    pub frontend_url: String,
+    pub app_env: String,
+    pub run_migrations: bool,
     pub reconciliation_interval_seconds: u64,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
-        if dotenvy::from_filename(".env.production").is_err() {
+        if dotenvy::from_filename(".env").is_err() {
             dotenvy::dotenv().ok();
         }
 
         let app_env = env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
+        if app_env == "production" {
+            let _ = dotenvy::from_filename(".env.production");
+        }
         let run_migrations = env::var("RUN_MIGRATIONS")
             .ok()
             .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
@@ -37,8 +41,7 @@ impl AppConfig {
             database_url: env::var("DATABASE_URL").unwrap_or_default(),
             jwt_secret: env::var("JWT_SECRET")
                 .unwrap_or_else(|_| "change-me-in-production-min-32-chars".to_string()),
-            host: env::var("HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            host: env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             port: env::var("PORT")
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
@@ -70,8 +73,12 @@ impl AppConfig {
         if self.database_url.trim().is_empty() {
             return Err("DATABASE_URL must be set".to_string());
         }
-        if self.jwt_secret.trim().len() < 32 || self.jwt_secret == "change-me-in-production-min-32-chars" {
-            return Err("JWT_SECRET must be set to a strong value with at least 32 characters".to_string());
+        if self.jwt_secret.trim().len() < 32
+            || self.jwt_secret == "change-me-in-production-min-32-chars"
+        {
+            return Err(
+                "JWT_SECRET must be set to a strong value with at least 32 characters".to_string(),
+            );
         }
 
         if self.app_env == "production" {
@@ -144,3 +151,4 @@ mod tests {
         assert!(cfg.validate().is_err());
     }
 }
+

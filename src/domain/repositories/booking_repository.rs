@@ -1,6 +1,6 @@
-use uuid::Uuid;
 use crate::domain::entities::booking::Booking;
 use crate::shared::errors::DomainError;
+use uuid::Uuid;
 
 #[async_trait::async_trait]
 pub trait BookingRepository: Send + Sync {

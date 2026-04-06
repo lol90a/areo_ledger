@@ -1,5 +1,7 @@
-pub mod money;
 pub mod blockchain;
+pub mod money;
 
-pub use money::{Money, FiatCurrency, CryptoToken, Chain, PriceBreakdown, MoneyError, resolve_chain_token};
-pub use blockchain::{TxHash, WalletAddress, IdempotencyKey};
+pub use blockchain::{IdempotencyKey, TxHash, WalletAddress};
+pub use money::{
+    resolve_chain_token, Chain, CryptoToken, FiatCurrency, Money, MoneyError, PriceBreakdown,
+};

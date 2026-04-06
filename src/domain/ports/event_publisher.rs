@@ -5,5 +5,8 @@ use crate::shared::errors::DomainError;
 /// The domain declares this need — infrastructure provides the implementation.
 #[async_trait::async_trait]
 pub trait EventPublisher: Send + Sync {
-    async fn publish<E: DomainEvent + serde::Serialize>(&self, event: &E) -> Result<(), DomainError>;
+    async fn publish<E: DomainEvent + serde::Serialize>(
+        &self,
+        event: &E,
+    ) -> Result<(), DomainError>;
 }

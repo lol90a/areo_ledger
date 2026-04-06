@@ -10,10 +10,15 @@ pub struct PgAuditLogRepository {
 }
 
 impl PgAuditLogRepository {
-    pub fn new(pool: DbPool) -> Self { Self { pool } }
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
+    }
 
     async fn client(&self) -> Result<deadpool_postgres::Client, DomainError> {
-        self.pool.get().await.map_err(|e| InfraError::Database(e.to_string()).into())
+        self.pool
+            .get()
+            .await
+            .map_err(|e| InfraError::Database(e.to_string()).into())
     }
 
     pub async fn record(

@@ -23,16 +23,22 @@ impl MultiChainGateway {
         bitcoin: BitcoinGateway,
         wallets: HashMap<String, String>,
     ) -> Self {
-        Self { ethereum, bsc, solana, bitcoin, wallets }
+        Self {
+            ethereum,
+            bsc,
+            solana,
+            bitcoin,
+            wallets,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl BlockchainGateway for MultiChainGateway {
     fn receiving_address(&self, token: &str) -> Result<String, DomainError> {
-        self.wallets.get(token)
-            .cloned()
-            .ok_or_else(|| DomainError::ValidationError(format!("No wallet configured for {}", token)))
+        self.wallets.get(token).cloned().ok_or_else(|| {
+            DomainError::ValidationError(format!("No wallet configured for {}", token))
+        })
     }
 
     async fn verify_transaction(
@@ -43,11 +49,30 @@ impl BlockchainGateway for MultiChainGateway {
         expected_amount_cents: i64,
     ) -> Result<TxVerification, DomainError> {
         match chain {
-            "Ethereum" => self.ethereum.verify_transaction(chain, tx_hash, expected_to, expected_amount_cents).await,
-            "BSC" => self.bsc.verify_transaction(chain, tx_hash, expected_to, expected_amount_cents).await,
-            "Solana" => self.solana.verify_transaction(chain, tx_hash, expected_to, expected_amount_cents).await,
-            "Bitcoin" => self.bitcoin.verify_transaction(chain, tx_hash, expected_to, expected_amount_cents).await,
-            other => Err(DomainError::ValidationError(format!("Unsupported verification chain: {}", other))),
+            "Ethereum" => {
+                self.ethereum
+                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
+                    .await
+            }
+            "BSC" => {
+                self.bsc
+                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
+                    .await
+            }
+            "Solana" => {
+                self.solana
+                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
+                    .await
+            }
+            "Bitcoin" => {
+                self.bitcoin
+                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
+                    .await
+            }
+            other => Err(DomainError::ValidationError(format!(
+                "Unsupported verification chain: {}",
+                other
+            ))),
         }
     }
 }

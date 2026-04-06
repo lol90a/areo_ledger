@@ -1,6 +1,6 @@
-use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration};
 
 use crate::shared::errors::{DomainError, InfraError};
 
@@ -25,7 +25,12 @@ impl JwtService {
         &self.secret
     }
 
-    pub fn create_token(&self, user_id: &str, email: &str, role: &str) -> Result<String, DomainError> {
+    pub fn create_token(
+        &self,
+        user_id: &str,
+        email: &str,
+        role: &str,
+    ) -> Result<String, DomainError> {
         let exp = Utc::now()
             .checked_add_signed(Duration::hours(24))
             .expect("valid timestamp")
@@ -33,7 +38,12 @@ impl JwtService {
 
         encode(
             &Header::default(),
-            &Claims { sub: user_id.to_owned(), email: email.to_owned(), role: role.to_owned(), exp },
+            &Claims {
+                sub: user_id.to_owned(),
+                email: email.to_owned(),
+                role: role.to_owned(),
+                exp,
+            },
             &EncodingKey::from_secret(self.secret.as_ref()),
         )
         .map_err(|e| InfraError::Auth(e.to_string()).into())
