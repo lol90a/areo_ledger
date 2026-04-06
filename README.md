@@ -77,24 +77,7 @@ The Actix server exposes routes under `/api`.
 
 Some routes are public, while protected routes require a valid JWT.
 
-## Environment setup
 
-Create a local `.env` based on the project example. Important variables include:
-
-```env
-APP_ENV=development
-RUN_MIGRATIONS=true
-DATABASE_URL=postgresql://postgres:postgres@localhost/aeroledger
-JWT_SECRET=replace-with-a-secure-secret
-HOST=127.0.0.1
-PORT=8080
-FRONTEND_URL=http://localhost:3000
-RECONCILIATION_INTERVAL_SECONDS=60
-```
-
-You will also need wallet addresses and chain API settings for payment verification features.
-
-For production-style values, review `.env.production` and the deployment notes in [deploy/README.md](/e:/areo_ledger/deploy/README.md).
 
 ## Running the backend
 
