@@ -83,6 +83,7 @@ All API routes are served under `/api`.
 
 Protected routes require a valid JWT.
 
+<<<<<<< HEAD
 ## Checkout Flow
 
 The current checkout flow supports both flight items and marketplace assets:
@@ -98,6 +99,9 @@ The current checkout flow supports both flight items and marketplace assets:
 
 
 ## Running the Backend
+=======
+
+>>>>>>> 8cf27dd8bb519e54a89d3f05ebfaaebf1b010de0
 
 Make sure PostgreSQL is available and `DATABASE_URL` is valid, then run:
 
