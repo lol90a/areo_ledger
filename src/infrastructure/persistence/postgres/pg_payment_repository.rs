@@ -2,8 +2,8 @@ use uuid::Uuid;
 
 use crate::domain::entities::payment::{Payment, PaymentStatus};
 use crate::domain::repositories::payment_repository::PaymentRepository;
-use crate::domain::value_objects::money::{Money, FiatCurrency};
 use crate::domain::value_objects::blockchain::TxHash;
+use crate::domain::value_objects::money::{FiatCurrency, Money};
 use crate::infrastructure::db::DbPool;
 use crate::shared::errors::{DomainError, InfraError};
 
@@ -12,10 +12,15 @@ pub struct PgPaymentRepository {
 }
 
 impl PgPaymentRepository {
-    pub fn new(pool: DbPool) -> Self { Self { pool } }
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
+    }
 
     async fn client(&self) -> Result<deadpool_postgres::Client, DomainError> {
-        self.pool.get().await.map_err(|e| InfraError::Database(e.to_string()).into())
+        self.pool
+            .get()
+            .await
+            .map_err(|e| InfraError::Database(e.to_string()).into())
     }
 
     fn row_to_payment(row: &tokio_postgres::Row) -> Result<Payment, DomainError> {
@@ -27,17 +32,47 @@ impl PgPaymentRepository {
         let created = row.get::<_, chrono::NaiveDateTime>(9);
 
         Ok(Payment {
-            id:               row.get(0),
-            booking_id:       row.get(1),
-            chain:            row.get(2),
-            token:            row.get(3),
+            id: row.get(0),
+            booking_id: row.get(1),
+            chain: row.get(2),
+            token: row.get(3),
             amount,
-            sender_address:   row.get(5),
+            sender_address: row.get(5),
             receiver_address: row.get(6),
             tx_hash,
-            status:           PaymentStatus::from_str(row.get::<_, &str>(8)),
-            created_at:       chrono::DateTime::from_naive_utc_and_offset(created, chrono::Utc),
+            status: PaymentStatus::from_str(row.get::<_, &str>(8)),
+            created_at: chrono::DateTime::from_naive_utc_and_offset(created, chrono::Utc),
         })
+    }
+
+    pub async fn attach_proof(
+        &self,
+        booking_id: &Uuid,
+        proof_path: &str,
+        content_type: Option<&str>,
+    ) -> Result<(), DomainError> {
+        let client = self.client().await?;
+        let updated = client
+            .execute(
+                "UPDATE payments
+                 SET payment_proof_path = $1,
+                     payment_proof_content_type = $2,
+                     payment_proof_uploaded_at = NOW(),
+                     updated_at = NOW()
+                 WHERE booking_id = $3",
+                &[&proof_path, &content_type, booking_id],
+            )
+            .await
+            .map_err(|e| InfraError::Database(e.to_string()))?;
+
+        if updated == 0 {
+            return Err(DomainError::NotFound(format!(
+                "Payment for booking {}",
+                booking_id
+            )));
+        }
+
+        Ok(())
     }
 }
 
@@ -45,23 +80,29 @@ impl PgPaymentRepository {
 impl PaymentRepository for PgPaymentRepository {
     async fn find_by_booking_id(&self, booking_id: &Uuid) -> Result<Payment, DomainError> {
         let client = self.client().await?;
-        let row = client.query_one(
-            "SELECT id, booking_id, chain, token, CAST(amount AS FLOAT8),
-             sender_wallet, wallet_address, tx_hash, status, created_at
-             FROM payments WHERE booking_id = $1",
-            &[booking_id],
-        ).await.map_err(|_| DomainError::NotFound(format!("Payment for booking {}", booking_id)))?;
+        let row = client
+            .query_one(
+                "SELECT id, booking_id, chain, token, CAST(amount AS FLOAT8),
+                 sender_wallet, wallet_address, tx_hash, status, created_at
+                 FROM payments WHERE booking_id = $1",
+                &[booking_id],
+            )
+            .await
+            .map_err(|_| DomainError::NotFound(format!("Payment for booking {}", booking_id)))?;
         Self::row_to_payment(&row)
     }
 
     async fn find_all(&self) -> Result<Vec<Payment>, DomainError> {
         let client = self.client().await?;
-        let rows = client.query(
-            "SELECT id, booking_id, chain, token, CAST(amount AS FLOAT8),
-             sender_wallet, wallet_address, tx_hash, status, created_at
-             FROM payments ORDER BY created_at DESC",
-            &[],
-        ).await.map_err(|e| InfraError::Database(e.to_string()))?;
+        let rows = client
+            .query(
+                "SELECT id, booking_id, chain, token, CAST(amount AS FLOAT8),
+                 sender_wallet, wallet_address, tx_hash, status, created_at
+                 FROM payments ORDER BY created_at DESC",
+                &[],
+            )
+            .await
+            .map_err(|e| InfraError::Database(e.to_string()))?;
         rows.iter().map(Self::row_to_payment).collect()
     }
 
@@ -82,7 +123,9 @@ impl PaymentRepository for PgPaymentRepository {
             Ok(_) => Ok(()),
             Err(e) => {
                 if e.to_string().contains("duplicate key") {
-                    Err(DomainError::Conflict("Payment already exists for this booking".to_string()))
+                    Err(DomainError::Conflict(
+                        "Payment already exists for this booking".to_string(),
+                    ))
                 } else {
                     log::error!("DB save payment error: {}", e);
                     Err(InfraError::Database(e.to_string()).into())

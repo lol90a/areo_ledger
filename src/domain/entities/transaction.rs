@@ -1,6 +1,5 @@
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
-
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionType {
@@ -11,19 +10,23 @@ pub enum TransactionType {
 
 impl TransactionType {
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Buy => "buy", Self::Sell => "sell", Self::Transfer => "transfer" }
+        match self {
+            Self::Buy => "buy",
+            Self::Sell => "sell",
+            Self::Transfer => "transfer",
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Transaction {
-    pub id:         Uuid,
-    pub user_id:    Uuid,
-    pub tx_type:    TransactionType,
-    pub asset:      String,
-    pub amount:     f64,        // kept as f64 for display only — not used in arithmetic
-    pub status:     String,
-    pub tx_hash:    String,
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub tx_type: TransactionType,
+    pub asset: String,
+    pub amount: f64, // kept as f64 for display only — not used in arithmetic
+    pub status: String,
+    pub tx_hash: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -38,7 +41,16 @@ impl Transaction {
         tx_hash: String,
         created_at: DateTime<Utc>,
     ) -> Self {
-        Self { id, user_id, tx_type, asset, amount, status, tx_hash, created_at }
+        Self {
+            id,
+            user_id,
+            tx_type,
+            asset,
+            amount,
+            status,
+            tx_hash,
+            created_at,
+        }
     }
 
     pub fn is_settled(&self) -> bool {

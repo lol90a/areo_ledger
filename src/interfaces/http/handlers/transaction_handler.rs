@@ -9,8 +9,7 @@ use crate::interfaces::http::error_response::into_response;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/transactions")
-            .route("/{user_id}", web::get().to(get_user_transactions)),
+        web::scope("/transactions").route("/{user_id}", web::get().to(get_user_transactions)),
     );
 }
 

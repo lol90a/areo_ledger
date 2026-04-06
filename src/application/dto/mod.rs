@@ -1,5 +1,5 @@
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUserInput {
@@ -26,7 +26,7 @@ pub struct UserOutput {
 #[derive(Debug, Deserialize)]
 pub struct CreateBookingInput {
     pub user_id: Uuid,
-    pub flight_id: Uuid,
+    pub flight_id: Option<Uuid>,
     pub base_price: f64,
     pub payment_method: String,
 }

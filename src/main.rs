@@ -41,6 +41,7 @@ async fn main() -> std::io::Result<()> {
         log::info!("Skipping migrations on startup.");
     }
 
+    let app_config = web::Data::new(config.clone());
     let jwt = web::Data::new(JwtService::new(config.jwt_secret.clone()));
 
     let mut wallets = HashMap::new();
@@ -62,7 +63,8 @@ async fn main() -> std::io::Result<()> {
         pool.clone(),
         multichain_gateway.clone(),
         config.reconciliation_interval_seconds,
-    ).spawn();
+    )
+    .spawn();
     let multichain_gateway = web::Data::new(multichain_gateway);
 
     let governor_conf = GovernorConfigBuilder::default()
@@ -87,6 +89,8 @@ async fn main() -> std::io::Result<()> {
                 .allowed_origin("http://localhost:3001")
                 .allowed_origin("http://127.0.0.1:3000")
                 .allowed_origin("http://127.0.0.1:3001")
+                .allowed_origin("http://localhost:5173")
+                .allowed_origin("http://127.0.0.1:5173")
                 .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                 .allowed_headers(vec!["Content-Type", "Authorization"])
                 .max_age(3600)
@@ -99,23 +103,24 @@ async fn main() -> std::io::Result<()> {
         };
 
         App::new()
-            .wrap(cors)
-            .wrap(AuthMiddleware { jwt_secret: jwt_secret.clone() })
+            .wrap(AuthMiddleware {
+                jwt_secret: jwt_secret.clone(),
+            })
             .wrap(Governor::new(&governor_conf))
             .wrap(middleware::Logger::default())
+            .wrap(cors)
             .app_data(web::Data::new(pool.clone()))
+            .app_data(app_config.clone())
             .app_data(jwt.clone())
             .app_data(multichain_gateway.clone())
-            .app_data(
-                web::JsonConfig::default().error_handler(|err, _req| {
-                    let msg = format!("{}", err);
-                    actix_web::error::InternalError::from_response(
-                        err,
-                        actix_web::HttpResponse::BadRequest().json(serde_json::json!({ "error": msg })),
-                    )
-                    .into()
-                }),
-            )
+            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                let msg = format!("{}", err);
+                actix_web::error::InternalError::from_response(
+                    err,
+                    actix_web::HttpResponse::BadRequest().json(serde_json::json!({ "error": msg })),
+                )
+                .into()
+            }))
             .service(
                 web::scope("/api")
                     .configure(health_handler::config)
@@ -125,11 +130,14 @@ async fn main() -> std::io::Result<()> {
                     .configure(transaction_handler::config),
             )
             .default_service(web::route().to(|| async {
-                actix_web::HttpResponse::NotFound().json(serde_json::json!({ "error": "Route not found" }))
+                actix_web::HttpResponse::NotFound()
+                    .json(serde_json::json!({ "error": "Route not found" }))
             }))
     })
     .bind(&bind_addr)?
     .run()
     .await
 }
+
+
 

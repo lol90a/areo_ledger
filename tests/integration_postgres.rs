@@ -1,7 +1,10 @@
 use std::env;
 use uuid::Uuid;
 
-use areo_ledger::application::dto::{AuthenticateUserInput, ConfirmPaymentInput, CreateBookingInput, CreateUserInput, InitPaymentInput};
+use areo_ledger::application::dto::{
+    AuthenticateUserInput, ConfirmPaymentInput, CreateBookingInput, CreateUserInput,
+    InitPaymentInput,
+};
 use areo_ledger::application::use_cases::authenticate_user::AuthenticateUser;
 use areo_ledger::application::use_cases::confirm_payment::ConfirmPayment;
 use areo_ledger::application::use_cases::create_booking::CreateBooking;
@@ -26,7 +29,13 @@ impl BlockchainGateway for TestGateway {
         Ok(format!("test-wallet-{}", token))
     }
 
-    async fn verify_transaction(&self, _chain: &str, _tx_hash: &str, expected_to: &str, expected_amount_cents: i64) -> Result<TxVerification, DomainError> {
+    async fn verify_transaction(
+        &self,
+        _chain: &str,
+        _tx_hash: &str,
+        expected_to: &str,
+        expected_amount_cents: i64,
+    ) -> Result<TxVerification, DomainError> {
         Ok(TxVerification {
             verified: true,
             amount_cents: expected_amount_cents,
@@ -51,35 +60,49 @@ async fn setup() -> Option<deadpool_postgres::Pool> {
 #[tokio::test]
 #[ignore]
 async fn postgres_happy_path_signup_booking_payment_confirm() {
-    let pool = setup().await.expect("TEST_DATABASE_URL must be set for integration tests");
+    let pool = setup()
+        .await
+        .expect("TEST_DATABASE_URL must be set for integration tests");
 
-    let user = CreateUser::new(PgUserRepository::new(pool.clone())).execute(CreateUserInput {
-        email: format!("integration-{}@example.com", Uuid::new_v4()),
-        name: "Integration User".to_string(),
-        password: "Password123!".to_string(),
-    }).await.unwrap();
+    let user = CreateUser::new(PgUserRepository::new(pool.clone()))
+        .execute(CreateUserInput {
+            email: format!("integration-{}@example.com", Uuid::new_v4()),
+            name: "Integration User".to_string(),
+            password: "Password123!".to_string(),
+        })
+        .await
+        .unwrap();
 
-    let authed = AuthenticateUser::new(PgUserRepository::new(pool.clone())).execute(AuthenticateUserInput {
-        email: user.email.clone(),
-        password: "Password123!".to_string(),
-    }).await.unwrap();
+    let authed = AuthenticateUser::new(PgUserRepository::new(pool.clone()))
+        .execute(AuthenticateUserInput {
+            email: user.email.clone(),
+            password: "Password123!".to_string(),
+        })
+        .await
+        .unwrap();
     assert_eq!(authed.id, user.id);
 
-    let booking = CreateBooking::new(PgBookingRepository::new(pool.clone())).execute(CreateBookingInput {
-        user_id: user.id,
-        flight_id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
-        base_price: 9500.0,
-        payment_method: "eth".to_string(),
-    }).await.unwrap();
+    let booking = CreateBooking::new(PgBookingRepository::new(pool.clone()))
+        .execute(CreateBookingInput {
+            user_id: user.id,
+            flight_id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+            base_price: 9500.0,
+            payment_method: "eth".to_string(),
+        })
+        .await
+        .unwrap();
 
     let init = InitPayment::new(
         PgBookingRepository::new(pool.clone()),
         PgPaymentRepository::new(pool.clone()),
         TestGateway,
-    ).execute(InitPaymentInput {
+    )
+    .execute(InitPaymentInput {
         booking_id: booking.booking_id,
         method: "eth".to_string(),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     assert!(!init.wallet_address.is_empty());
 
     ConfirmPayment::new(
@@ -87,11 +110,17 @@ async fn postgres_happy_path_signup_booking_payment_confirm() {
         PgPaymentRepository::new(pool.clone()),
         PgTransactionRepository::new(pool.clone()),
         TestGateway,
-    ).execute(ConfirmPaymentInput {
+    )
+    .execute(ConfirmPaymentInput {
         booking_id: booking.booking_id,
         tx_hash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
-    let txs = GetTransactions::new(PgTransactionRepository::new(pool.clone())).execute(user.id).await.unwrap();
+    let txs = GetTransactions::new(PgTransactionRepository::new(pool.clone()))
+        .execute(user.id)
+        .await
+        .unwrap();
     assert!(!txs.is_empty());
 }
