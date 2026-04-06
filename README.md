@@ -1,151 +1,185 @@
 # AeroLedger
 
-AeroLedger is a crypto-native aviation commerce platform for flight bookings and luxury aircraft purchases. The project combines a Rust backend with a premium Next.js frontend to support browsing, pricing, checkout, payment confirmation, and transaction tracking across multiple blockchains.
+AeroLedger is a crypto-native commerce platform for private aviation and luxury marketplace purchases. It combines a Rust backend with a React + Vite frontend to support browsing, cart management, protected checkout, crypto payment initialization, transaction-hash confirmation, payment-proof uploads, and transaction tracking across multiple blockchains.
 
-## What the project includes
+## Highlights
 
-- Flight booking flows and aircraft marketplace pages
-- Crypto payment initialization and transaction-hash confirmation
-- Multi-chain support for BTC, ETH, USDT, USDC, SOL, and BNB
-- User authentication with JWT-based protected endpoints
-- Admin and customer dashboard experiences
+- Flight booking checkout and marketplace asset checkout
+- Crypto payment flows for BTC, ETH, USDT, USDC, SOL, and BNB
+- Booking creation, payment initialization, hash submission, and tracking
+- Payment-proof image upload connected to the backend
+- JWT-based authentication for protected routes
 - Background reconciliation for pending payments
+- PostgreSQL-backed persistence with startup migrations
 
-## Tech stack
+## Tech Stack
 
 ### Backend
 
 - Rust 2021
 - Actix Web
+- Actix CORS
+- Actix Multipart
 - PostgreSQL
 - Deadpool Postgres
 - JWT authentication
-- Chain integrations for EVM, Solana, and Bitcoin
+- Reqwest-based blockchain integrations for EVM, Bitcoin, and Solana
 
 ### Frontend
 
-- Next.js 14
 - React 18
 - TypeScript
+- Vite
+- React Router
 - Tailwind CSS
-- Framer Motion
-- TanStack Query
+- Motion
+- Radix UI primitives
 
-## Repository layout
+## Repository Layout
 
 ```text
 .
-|-- src/                    # Rust backend
-|   |-- application/        # Use cases, commands, DTOs, queries
-|   |-- domain/             # Entities, repositories, value objects, ports
-|   |-- infrastructure/     # Config, DB, auth, blockchain, persistence, workers
+|-- src/                    # Rust backend source
+|   |-- application/        # Use cases and DTOs
+|   |-- domain/             # Entities, ports, repositories, value objects
+|   |-- infrastructure/     # Config, DB, blockchain, persistence, workers
 |   |-- interfaces/         # HTTP handlers and middleware
 |   |-- lib.rs
 |   `-- main.rs
-|-- frontend-luxury/        # Next.js frontend
-|   |-- app/                # App Router pages
-|   |-- components/         # Shared UI
-|   |-- context/            # Client-side state/context
-|   |-- lib/                # Utilities and API helpers
-|   `-- styles/
-|-- migrations/             # PostgreSQL schema and migration scripts
-|-- deploy/                 # Production deployment assets
-`-- tests/                  # Integration tests
+|-- Frontend/               # React + Vite frontend
+|   |-- src/app/            # Pages, routes, UI, helpers, local data
+|   `-- package.json
+|-- migrations/             # PostgreSQL schema and migration SQL
+|-- deploy/                 # Deployment assets
+|-- tests/                  # Test scaffolding
+|-- .env.example
+|-- .env.production
+`-- README.md
 ```
 
-## Backend architecture
+## Backend Architecture
 
-The backend is organized around a layered design:
+The backend follows a layered structure:
 
-- `domain` contains the core business entities and contracts.
-- `application` coordinates use cases such as booking creation, payment initialization, and payment confirmation.
-- `infrastructure` provides PostgreSQL repositories, JWT handling, blockchain gateways, observability, and the reconciliation worker.
+- `domain` contains business entities and contracts.
+- `application` contains use cases such as booking creation, payment initialization, and payment confirmation.
+- `infrastructure` contains PostgreSQL repositories, blockchain gateways, auth services, config, and workers.
 - `interfaces` exposes the HTTP API through Actix handlers and middleware.
 
-## Core API routes
+## Core API Routes
 
-The Actix server exposes routes under `/api`.
+All API routes are served under `/api`.
 
-- `GET /api/health` for health checks
-- `POST /api/users/signup` to create an account
-- `POST /api/users/login` to authenticate
-- `POST /api/bookings` to create a booking
-- `GET /api/bookings/latest` to fetch the latest booking for the current user
-- `POST /api/payments/init` to initialize a crypto payment
-- `POST /api/payments/confirm` to confirm a payment with a transaction hash
-- `GET /api/transactions/{user_id}` to fetch user transactions
+- `GET /api/health`
+- `POST /api/users/signup`
+- `POST /api/users/login`
+- `POST /api/bookings`
+- `GET /api/bookings/latest`
+- `GET /api/payments/options`
+- `POST /api/payments/init`
+- `POST /api/payments/confirm`
+- `POST /api/payments/proof/{booking_id}`
+- `GET /api/transactions/{user_id}`
 
-Some routes are public, while protected routes require a valid JWT.
+Protected routes require a valid JWT.
 
-## Environment setup
+## Checkout Flow
 
-Create a local `.env` based on the project example. Important variables include:
+The current checkout flow supports both flight items and marketplace assets:
 
-```env
-APP_ENV=development
-RUN_MIGRATIONS=true
-DATABASE_URL=postgresql://postgres:postgres@localhost/aeroledger
-JWT_SECRET=replace-with-a-secure-secret
-HOST=127.0.0.1
-PORT=8080
-FRONTEND_URL=http://localhost:3000
-RECONCILIATION_INTERVAL_SECONDS=60
-```
+1. Sign in.
+2. Add a flight or marketplace item to the cart.
+3. Start checkout and provide client details.
+4. Create a booking on the backend.
+5. Initialize crypto payment instructions.
+6. Submit a blockchain transaction hash.
+7. Optionally upload a payment screenshot as proof.
+8. Track status from initialized to awaiting to confirmed.
 
-You will also need wallet addresses and chain API settings for payment verification features.
 
-For production-style values, review `.env.production` and the deployment notes in [deploy/README.md](/e:/areo_ledger/deploy/README.md).
+## Running the Backend
 
-## Running the backend
-
-1. Make sure PostgreSQL is running and `DATABASE_URL` points to an available database.
-2. Start the API server from the repository root:
+Make sure PostgreSQL is available and `DATABASE_URL` is valid, then run:
 
 ```bash
 cargo run
 ```
 
-The backend listens on `http://127.0.0.1:8080` by default.
+Default backend address:
 
-## Running the frontend
+```text
+http://127.0.0.1:8080
+```
 
-Start the Next.js app from `frontend-luxury/`:
+## Running the Frontend
+
+From the `Frontend/` directory:
 
 ```bash
-cd frontend-luxury
+cd Frontend
 npm install
 npm run dev
 ```
 
-The frontend typically runs on `http://localhost:3000`.
+The frontend uses Vite. Set `VITE_API_BASE_URL` if you need a different backend base URL.
 
-## Database and migrations
+## Migrations
 
-The project uses PostgreSQL, not SQLite. Migration files live in `migrations/`.
+The backend migration runner executes `migrations/complete_schema.sql` on startup when `RUN_MIGRATIONS=true`.
 
-Development flow:
+That schema includes:
 
-- Use `RUN_MIGRATIONS=true` if you want the app to apply migrations on startup.
-- For production, keep `RUN_MIGRATIONS=false` and run migrations as a separate deployment step.
+- users
+- flights
+- bookings
+- payments
+- transactions
+- audit log
+- supporting marketplace and portfolio tables
 
-## Tests
+## Payment Proof Uploads
 
-Integration coverage includes a PostgreSQL-backed test scaffold in `tests/integration_postgres.rs`.
+Payment-proof images uploaded from checkout are stored by the backend under:
 
-Run the ignored integration tests with:
-
-```bash
-cargo test -- --ignored
+```text
+uploads/payment_proofs/<booking_id>/
 ```
 
-Set `TEST_DATABASE_URL` before running those tests.
+The payment row also stores proof metadata such as path, content type, and upload timestamp.
 
-## Production notes
+## Verification Commands
 
-Production deployment assets live in `deploy/`, including:
+Backend:
 
-- `docker-compose.prod.yml`
-- `nginx.conf`
-- `backup.ps1`
+```bash
+cargo check
+```
 
-The deployment guide is in [deploy/README.md](/e:/areo_ledger/deploy/README.md).
+Frontend:
+
+```bash
+cd Frontend
+npm run build
+```
+
+## Deployment Notes
+
+Production deployment assets are stored in `deploy/`.
+
+Useful files include:
+
+- `deploy/docker-compose.prod.yml`
+- `deploy/nginx.conf`
+- `Dockerfile`
+- `.env.production`
+
+## Current Status
+
+The repository currently supports:
+
+- backend checkout for flights and marketplace items
+- transaction hash confirmation
+- payment-proof uploads wired from frontend to backend
+- transaction history and order tracking
+
+If you change env values such as `JWT_SECRET`, restart the backend and sign in again so the frontend session stays valid.
