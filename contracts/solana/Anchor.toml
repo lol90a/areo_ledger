@@ -1,3 +1,13 @@
+# SECURITY / DEPLOYMENT NOTE:
+# The program id below is the Anchor template placeholder
+# (Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j). Before ANY deploy a real program
+# keypair MUST be generated and every id below (plus `declare_id!` in
+# programs/aeroledger-escrow/src/lib.rs) updated to match it. Run:
+#     anchor keys sync
+# which derives the id from target/deploy/aeroledger_escrow-keypair.json and
+# rewrites both this file and lib.rs consistently. Deploying with this
+# placeholder id will fail.
+
 [toolchain]
 
 [features]
@@ -5,13 +15,13 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-aeroledger_escrow = "AeroLedgerEscrowProgramID111111111111111111"
+aeroledger_escrow = "Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j"
 
 [programs.devnet]
-aeroledger_escrow = "AeroLedgerEscrowProgramID111111111111111111"
+aeroledger_escrow = "Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j"
 
 [programs.mainnet]
-aeroledger_escrow = "AeroLedgerEscrowProgramID111111111111111111"
+aeroledger_escrow = "Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j"
 
 [registry]
 url = "https://api.apr.dev"

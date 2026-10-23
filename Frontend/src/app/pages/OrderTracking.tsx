@@ -3,7 +3,12 @@ import { motion } from "motion/react";
 import { ArrowLeft, CheckCircle2, CircleDashed, Download, FileText, MessageCircleMore, ShieldAlert, UserRound, ArrowRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchLatestBooking, fetchTransactions, type LatestBookingResponse, type TransactionResponse } from "../lib/backend";
+import {
+  fetchBookingById,
+  normalizeSettlementStatus,
+  type LatestBookingResponse,
+  type SettlementStatus,
+} from "../lib/backend";
 import { authEventName, getAuthSession, type AuthSession } from "../lib/auth";
 
 type TimelineItem = {
@@ -21,7 +26,7 @@ type TrackingViewModel = {
   network: string;
   amount: string;
   fiatAmount: string;
-  status: "initialized" | "awaiting" | "confirmed" | "failed";
+  status: SettlementStatus;
   txHash: string;
   walletAddress: string;
   timeline: TimelineItem[];
@@ -50,11 +55,11 @@ function buildTimeline(status: TrackingViewModel["status"]): TimelineItem[] {
   ];
 }
 
-function buildFromLatestBooking(booking: LatestBookingResponse): TrackingViewModel {
-  const normalizedStatus = (booking.status as TrackingViewModel["status"]) || "initialized";
+function buildFromBooking(booking: LatestBookingResponse): TrackingViewModel {
+  const normalizedStatus = normalizeSettlementStatus(booking.status);
   return {
     id: booking.booking_id,
-    title: "Flight Booking",
+    title: booking.flight_id ? "Flight Booking" : "Asset Acquisition",
     type: "Booking",
     asset: booking.payment_method.toUpperCase(),
     network: booking.payment_method.toUpperCase(),
@@ -77,38 +82,10 @@ function buildFromLatestBooking(booking: LatestBookingResponse): TrackingViewMod
   };
 }
 
-function buildFromTransaction(transaction: TransactionResponse): TrackingViewModel {
-  const normalizedStatus = (transaction.status as TrackingViewModel["status"]) || "awaiting";
-  return {
-    id: transaction.id,
-    title: transaction.type.replaceAll("_", " "),
-    type: "Transaction",
-    asset: transaction.asset,
-    network: transaction.asset,
-    amount: `${transaction.amount.toFixed(2)} ${transaction.asset}`,
-    fiatAmount: "Recorded on backend ledger",
-    status: normalizedStatus,
-    txHash: transaction.tx_hash,
-    walletAddress: "Stored in payment initialization record",
-    timeline: buildTimeline(normalizedStatus),
-    documents: [
-      { name: "LedgerTransaction.txt", type: "Transaction reference" },
-      { name: "ComplianceSnapshot.txt", type: "Verification state" },
-    ],
-    manager: {
-      name: "AeroLedger Treasury Desk",
-      role: "Transaction Monitoring",
-      email: "support@aeroledger.com",
-      telegram: "@aeroledger_support",
-    },
-  };
-}
-
 export default function OrderTracking() {
   const { id } = useParams();
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [latestBooking, setLatestBooking] = useState<LatestBookingResponse | null>(null);
-  const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
+  const [booking, setBooking] = useState<LatestBookingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,33 +102,24 @@ export default function OrderTracking() {
     async function loadTrackingData() {
       setLoading(true);
       setError(null);
-      setLatestBooking(null);
-      setTransactions([]);
+      setBooking(null);
 
       if (!session) {
         setLoading(false);
         return;
       }
 
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const [bookingResult, transactionsResult] = await Promise.allSettled([
-          fetchLatestBooking(session.token),
-          fetchTransactions(session.token, session.id),
-        ]);
-
+        // Fetch the specific booking named in the route. We never fall back to a
+        // different booking's data, which previously showed the wrong order.
+        const result = await fetchBookingById(session.token, id);
         if (!active) return;
-
-        if (bookingResult.status === "fulfilled") {
-          setLatestBooking(bookingResult.value);
-        }
-
-        if (transactionsResult.status === "fulfilled") {
-          setTransactions(transactionsResult.value);
-        }
-
-        if (bookingResult.status === "rejected" && transactionsResult.status === "rejected") {
-          throw bookingResult.reason;
-        }
+        setBooking(result);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Unable to load tracking details.");
@@ -166,24 +134,14 @@ export default function OrderTracking() {
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [session, id]);
 
   const order = useMemo(() => {
-    if (!id) {
+    if (!id || !booking || booking.booking_id !== id) {
       return null;
     }
-
-    if (latestBooking && latestBooking.booking_id === id) {
-      return buildFromLatestBooking(latestBooking);
-    }
-
-    const matchingTransaction = transactions.find((transaction) => transaction.id === id);
-    if (matchingTransaction) {
-      return buildFromTransaction(matchingTransaction);
-    }
-
-    return latestBooking ? buildFromLatestBooking(latestBooking) : null;
-  }, [id, latestBooking, transactions]);
+    return buildFromBooking(booking);
+  }, [id, booking]);
 
   if (!session) {
     return (

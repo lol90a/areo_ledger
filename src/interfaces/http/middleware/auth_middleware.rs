@@ -9,16 +9,26 @@ use std::future::{ready, Ready};
 
 use crate::infrastructure::auth::jwt_service::JwtService;
 
-const PUBLIC_PREFIXES: &[&str] = &[
+/// Exact public routes. Matching is boundary-aware (`== path` or `path` starts with
+/// `prefix + '/'`) so a new protected route under one of these can never be silently
+/// exposed by a bare `starts_with`.
+const PUBLIC_PATHS: &[&str] = &[
+    "/api/health",
     "/api/users/signup",
     "/api/users/login",
-    "/api/products",
-    "/api/assets",
-    "/api/flights",
-    "/api/calculator",
-    "/api/health",
     "/api/payments/options",
+    "/api/flights",
+    "/api/assets",
 ];
+
+fn is_public_path(path: &str) -> bool {
+    PUBLIC_PATHS.iter().any(|p| {
+        path == *p
+            || path
+                .strip_prefix(p)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
 
 pub struct AuthMiddleware {
     pub jwt_secret: String,
@@ -68,7 +78,7 @@ where
             });
         }
 
-        if PUBLIC_PREFIXES.iter().any(|p| req.path().starts_with(p)) {
+        if is_public_path(req.path()) {
             let fut = self.service.call(req);
             return Box::pin(async move {
                 let res = fut.await?;

@@ -1,13 +1,20 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { 
-  X, 
-  Wallet, 
-  CheckCircle2, 
-  Loader2, 
-  ArrowRight,
-  ShieldCheck
-} from "lucide-react";
+/**
+ * Pre-checkout confirmation for a marketplace asset.
+ *
+ * This component used to run `setTimeout(() => setStep("success"), 3000)` and show
+ * "Payment Successful" with a green tick. Nothing had been priced, no wallet had
+ * been touched, and no chain had been consulted: a timer was being presented to a
+ * customer as financial settlement. That is removed entirely.
+ *
+ * What it does now is hand the user to the real checkout, where the backend issues
+ * a signed, expiring quote, the wallet balance is checked, and "paid" is only ever
+ * shown after the backend has verified the transfer on-chain. The prices shown here
+ * are catalogue figures and are labelled as indicative, because the authoritative
+ * amount is the one the server quotes at checkout.
+ */
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowRight, Info, ShieldCheck, Wallet, X } from "lucide-react";
+import { useNavigate } from "react-router";
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -20,151 +27,86 @@ interface PaymentModalProps {
 }
 
 export function PaymentModal({ isOpen, onClose, asset }: PaymentModalProps) {
-  const [step, setStep] = useState<"confirm" | "processing" | "success">("confirm");
-
-  useEffect(() => {
-    if (isOpen) setStep("confirm");
-  }, [isOpen]);
-
-  const handlePay = () => {
-    setStep("processing");
-    setTimeout(() => {
-      setStep("success");
-    }, 3000);
-  };
+  const navigate = useNavigate();
 
   if (!isOpen || !asset) return null;
+
+  const goToCheckout = () => {
+    onClose();
+    navigate("/checkout");
+  };
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        {/* Backdrop */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={step === "processing" ? undefined : onClose}
+          onClick={onClose}
           className="absolute inset-0 bg-[#05050A]/90 backdrop-blur-xl"
         />
 
-        {/* Modal */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-lg bg-[#0A0A10] border border-white/10 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden"
+          className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-[#0A0A10] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-white/5">
-            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-amber-500" />
-              Secure Checkout
+          <div className="flex items-center justify-between border-b border-white/5 p-6">
+            <h3 className="flex items-center gap-2 text-xl font-bold text-white">
+              <Wallet className="h-5 w-5 text-amber-500" />
+              Start Secure Checkout
             </h3>
-            {step !== "processing" && (
-              <button 
-                onClick={onClose}
-                className="p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
+            <button
+              onClick={onClose}
+              className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="p-6">
-            {step === "confirm" && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                {/* Asset Summary */}
-                <div className="flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/10">
-                  <div 
-                    className="w-20 h-20 rounded-xl bg-cover bg-center"
-                    style={{ backgroundImage: `url(${asset.image})` }}
-                  />
-                  <div className="flex-1 flex flex-col justify-center">
-                    <p className="text-slate-400 text-sm font-medium mb-1">Purchasing</p>
-                    <h4 className="text-white font-bold text-lg leading-tight">{asset.title}</h4>
-                  </div>
-                </div>
-
-                {/* Payment Details */}
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center py-3 border-b border-white/5">
-                    <span className="text-slate-400 font-medium">Network Fee</span>
-                    <span className="text-white">0.001 BTC</span>
-                  </div>
-                  <div className="flex justify-between items-center py-3 border-b border-white/5">
-                    <span className="text-slate-400 font-medium">Total Amount</span>
-                    <span className="text-2xl font-bold text-amber-400">{asset.price}</span>
-                  </div>
-                </div>
-
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex gap-3">
-                  <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
-                  <p className="text-sm text-amber-200/80 leading-relaxed">
-                    Transaction will be processed securely via the Bitcoin network. Ensure you have sufficient balance.
-                  </p>
-                </div>
-
-                <button 
-                  onClick={handlePay}
-                  className="w-full py-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold tracking-wider uppercase flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:shadow-[0_0_30px_rgba(245,158,11,0.4)]"
-                >
-                  Confirm Payment <ArrowRight className="w-5 h-5" />
-                </button>
-              </motion.div>
-            )}
-
-            {step === "processing" && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="py-12 flex flex-col items-center justify-center text-center"
-              >
-                <div className="relative mb-8">
-                  <div className="w-24 h-24 border-4 border-amber-500/20 rounded-full" />
-                  <div className="absolute inset-0 w-24 h-24 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Wallet className="w-8 h-8 text-amber-500 animate-pulse" />
-                  </div>
-                </div>
-                <h4 className="text-xl font-bold text-white mb-2">Processing Transaction</h4>
-                <p className="text-slate-400 max-w-[250px]">
-                  Confirming on the blockchain. This usually takes a few moments...
+          <div className="space-y-6 p-6">
+            <div className="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div
+                className="h-20 w-20 rounded-xl bg-cover bg-center"
+                style={{ backgroundImage: `url(${asset.image})` }}
+              />
+              <div className="flex flex-1 flex-col justify-center">
+                <p className="mb-1 text-sm font-medium text-slate-400">Selected</p>
+                <h4 className="text-lg font-bold leading-tight text-white">{asset.title}</h4>
+                <p className="mt-1 text-sm text-slate-500">
+                  Listed at {asset.price}
+                  <span className="ml-1 text-slate-600">(indicative)</span>
                 </p>
-              </motion.div>
-            )}
+              </div>
+            </div>
 
-            {step === "success" && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="py-12 flex flex-col items-center justify-center text-center"
-              >
-                <div className="w-24 h-24 rounded-full bg-emerald-500/10 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(16,185,129,0.2)] relative">
-                  <motion.div 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                  >
-                    <CheckCircle2 className="w-12 h-12 text-emerald-500" />
-                  </motion.div>
-                </div>
-                <h4 className="text-2xl font-bold text-white mb-2">Payment Successful</h4>
-                <p className="text-slate-400 max-w-[300px] mb-8">
-                  Your purchase of <strong className="text-white">{asset.title}</strong> has been confirmed.
-                </p>
-                <button 
-                  onClick={onClose}
-                  className="w-full py-4 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold tracking-wider uppercase transition-colors border border-white/10"
-                >
-                  View in Dashboard
-                </button>
-              </motion.div>
-            )}
+            <div className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <Info className="h-5 w-5 shrink-0 text-slate-400" />
+              <p className="text-sm leading-relaxed text-slate-400">
+                The figure above is the catalogue price. The amount you actually pay is
+                quoted by the backend at checkout, held for a fixed window, and shown to you
+                in both {asset.price.replace(/[\d.,\s]/g, "") || "fiat"} and the exact token
+                amount before you approve anything.
+              </p>
+            </div>
+
+            <div className="flex gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
+              <ShieldCheck className="h-5 w-5 shrink-0 text-amber-500" />
+              <p className="text-sm leading-relaxed text-amber-200/80">
+                At checkout you will connect a wallet, see whether your balance covers the
+                amount, and approve the price explicitly. An order is only marked paid once
+                the backend has verified the transfer on-chain.
+              </p>
+            </div>
+
+            <button
+              onClick={goToCheckout}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-4 font-bold uppercase tracking-wider text-black shadow-[0_0_20px_rgba(245,158,11,0.2)] transition-all hover:bg-amber-400 hover:shadow-[0_0_30px_rgba(245,158,11,0.4)]"
+            >
+              Continue to Checkout <ArrowRight className="h-5 w-5" />
+            </button>
           </div>
         </motion.div>
       </div>

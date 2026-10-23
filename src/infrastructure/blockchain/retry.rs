@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio::time::sleep;
 
-use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification};
+use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification, VerifyRequest};
 use crate::shared::errors::DomainError;
 
 #[derive(Debug, Clone)]
@@ -105,18 +105,11 @@ impl<G: BlockchainGateway> BlockchainGateway for RetryingBlockchainGateway<G> {
 
     async fn verify_transaction(
         &self,
-        chain: &str,
-        tx_hash: &str,
-        expected_to: &str,
-        expected_amount_cents: i64,
+        request: &VerifyRequest,
     ) -> Result<TxVerification, DomainError> {
         let inner = &self.inner;
-        self.with_retry(|| async move {
-            inner
-                .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
-                .await
-        })
-        .await
+        self.with_retry(|| async move { inner.verify_transaction(request).await })
+            .await
     }
 }
 

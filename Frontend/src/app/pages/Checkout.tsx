@@ -1,21 +1,22 @@
 import { motion } from "motion/react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { CheckCircle2, ArrowRight, ScanLine, ShieldAlert, Copy, FileDigit, UserRound, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, ArrowRight, FileDigit, UserRound, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getCartItems, type CartItem } from "../lib/commerce";
 import { FALLBACK_PAYMENT_OPTIONS, fetchPaymentOptions, type PaymentOption } from "../lib/paymentOptions";
-import { confirmPayment, createBooking, initPayment, uploadPaymentProof } from "../lib/backend";
+import {
+  CHECKOUT_PHASE_LABELS,
+  confirmPayment,
+  createBooking,
+  uploadPaymentProof,
+  type CheckoutPhase,
+  type InitPaymentResponse,
+} from "../lib/backend";
 import { authEventName, getAuthSession, type AuthSession } from "../lib/auth";
-
-type CheckoutStatus = "idle" | "initialized" | "awaiting" | "confirmed";
+import { CheckoutQuotePanel } from "../components/CheckoutQuotePanel";
 
 const checkoutSteps = ["Review", "Client Details", "Crypto Payment", "Tracking"];
-
-function parseFiatAmount(value: string) {
-  const numeric = Number(value.replace(/[^0-9.]+/g, ""));
-  return Number.isFinite(numeric) ? numeric : 0;
-}
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -23,14 +24,12 @@ export default function Checkout() {
   const itemId = searchParams.get("itemId");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
-  const [paymentStatus, setPaymentStatus] = useState<CheckoutStatus>("idle");
+  const [phase, setPhase] = useState<CheckoutPhase>("idle");
   const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>(FALLBACK_PAYMENT_OPTIONS);
   const [selectedMethod, setSelectedMethod] = useState("btc");
-  const [copied, setCopied] = useState(false);
   const [transactionHash, setTransactionHash] = useState("");
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [quotedAmount, setQuotedAmount] = useState<number | null>(null);
+  const [payment, setPayment] = useState<InitPaymentResponse | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +65,27 @@ export default function Checkout() {
     };
   }, []);
 
+  // Switching the payment network must invalidate any existing booking/quote.
+  // Otherwise the UI could show the NEW token's name over the OLD chain's deposit
+  // address, which risks the client sending funds to the wrong network.
+  const prevMethodRef = useRef(selectedMethod);
+  useEffect(() => {
+    if (prevMethodRef.current === selectedMethod) {
+      return;
+    }
+    prevMethodRef.current = selectedMethod;
+
+    // Clear the settlement state so a fresh quote is issued for the new network.
+    // A quote is bound to one token on one chain; carrying it across would show the
+    // new token's name over the old chain's deposit address.
+    setBookingId(null);
+    setPayment(null);
+    setTransactionHash("");
+    setPhase("idle");
+    setFormError(null);
+    setProofMessage(null);
+  }, [selectedMethod]);
+
   const selectedItem = useMemo(() => {
     return cartItems.find((item) => item.id === itemId) ?? cartItems[0];
   }, [cartItems, itemId]);
@@ -79,9 +99,15 @@ export default function Checkout() {
   const canUseBackendCheckout = Boolean(selectedItem);
   const orderLink = bookingId ? `/orders/${bookingId}` : "/transactions";
 
-  async function ensurePaymentInitialized() {
+  /**
+   * Create the booking if one does not exist yet, and nothing more.
+   *
+   * Pricing deliberately does NOT happen here: a booking only records what is being
+   * bought. The amount is issued, shown and approved in the quote panel.
+   */
+  async function ensureBooking() {
     if (!authSession) {
-      setFormError("Sign in first to create a booking and initialize payment.");
+      setFormError("Sign in first to create a booking.");
       return null;
     }
 
@@ -100,24 +126,23 @@ export default function Checkout() {
       return bookingId;
     }
 
+    const flightId = selectedItem.kind === "flight" ? selectedItem.backendFlightId : undefined;
+    const assetId = selectedItem.kind === "asset" ? selectedItem.backendAssetId : undefined;
+
+    if (!flightId && !assetId) {
+      setFormError("This item is missing a backend reference. Reload the catalog and add it again.");
+      return null;
+    }
+
     const createdBooking = await createBooking(authSession.token, {
       user_id: authSession.id,
-      flight_id: selectedItem.kind === "flight" ? selectedItem.backendFlightId : undefined,
-      base_price: parseFiatAmount(selectedItem.fiatPrice),
+      flight_id: flightId,
+      asset_id: assetId,
       payment_method: selectedMethod,
     });
 
     const newBookingId = createdBooking.booking_id;
     setBookingId(newBookingId);
-
-    const payment = await initPayment(authSession.token, {
-      booking_id: newBookingId,
-      method: selectedMethod,
-    });
-
-    setWalletAddress(payment.wallet_address);
-    setQuotedAmount(payment.amount);
-    setPaymentStatus("initialized");
     return newBookingId;
   }
 
@@ -133,51 +158,45 @@ export default function Checkout() {
     );
   }
 
-  const displayedWalletAddress = walletAddress ?? selectedOption.wallet_address ?? "Wallet address becomes available once treasury initializes this route.";
-
-  const handleInitializePayment = async () => {
+  const handlePaymentReady = (initialised: InitPaymentResponse) => {
+    setPayment(initialised);
+    setPhase("quote_accepted");
     setFormError(null);
-    setProofMessage(null);
-    setSubmitting(true);
-    try {
-      const ensuredBookingId = await ensurePaymentInitialized();
-      if (!ensuredBookingId) {
-        return;
-      }
-      setCurrentStep(3);
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to initialize payment.");
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   const handleSubmitHash = async () => {
     setFormError(null);
     setProofMessage(null);
+
+    // No locked price means nothing has been approved, so there is nothing a
+    // transaction could legitimately be settling.
+    if (!bookingId || !payment) {
+      setFormError("Approve the price first; the amount you owe is fixed when you lock the quote.");
+      setCurrentStep(2);
+      return;
+    }
+    if (!transactionHash.trim()) {
+      setFormError("Enter a transaction hash before submitting.");
+      return;
+    }
+
     setSubmitting(true);
-
     try {
-      const ensuredBookingId = await ensurePaymentInitialized();
-      if (!ensuredBookingId) {
-        return;
-      }
-
-      if (!transactionHash.trim()) {
-        setFormError("Enter a transaction hash before submitting.");
-        return;
-      }
-
-      setPaymentStatus("awaiting");
+      setPhase("transaction_submitted");
       await confirmPayment(authSession!.token, {
-        booking_id: ensuredBookingId,
+        booking_id: bookingId,
         tx_hash: transactionHash.trim(),
       });
-      setPaymentStatus("confirmed");
+      // The backend only returns success once it has verified the transfer on-chain
+      // against the locked amount and the platform address.
+      setPhase("payment_verified");
       setCurrentStep(3);
     } catch (err) {
-      setPaymentStatus("initialized");
-      setFormError(err instanceof Error ? err.message : "Unable to confirm payment.");
+      // A submitted-but-unverified transaction is "pending", not "failed": the
+      // reconciliation worker will settle it once it is confirmed on-chain.
+      const message = err instanceof Error ? err.message : "Unable to confirm payment.";
+      setPhase(/not verified yet|confirmations/i.test(message) ? "pending_confirmation" : "failed");
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -197,14 +216,15 @@ export default function Checkout() {
       return;
     }
 
+    if (!bookingId || !payment) {
+      setFormError("Approve the price first; proof can only be attached to an initialised payment.");
+      setCurrentStep(2);
+      return;
+    }
+
     setProofUploading(true);
     try {
-      const ensuredBookingId = await ensurePaymentInitialized();
-      if (!ensuredBookingId) {
-        return;
-      }
-
-      const result = await uploadPaymentProof(authSession!.token, ensuredBookingId, proofFile);
+      const result = await uploadPaymentProof(authSession!.token, bookingId, proofFile);
       setProofMessage(result.message);
       setCurrentStep(3);
     } catch (err) {
@@ -214,31 +234,38 @@ export default function Checkout() {
     }
   };
 
-  const handleCopy = async () => {
-    if (!displayedWalletAddress || displayedWalletAddress.includes("Wallet address becomes available")) return;
-    await navigator.clipboard.writeText(displayedWalletAddress);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  };
-
+  // Each step is reached by a real event, never by elapsed time.
+  const reached = (...phases: CheckoutPhase[]) => phases.includes(phase);
   const statusItems = [
     {
-      key: "initialized",
-      label: "Initialized",
-      detail: "Wallet instructions generated for the selected network.",
-      active: paymentStatus === "initialized" || paymentStatus === "awaiting" || paymentStatus === "confirmed",
+      key: "quote",
+      label: "Price locked",
+      detail: "You approved an exact amount and the server bound it to this booking.",
+      active: reached(
+        "quote_accepted",
+        "awaiting_wallet",
+        "transaction_submitted",
+        "pending_confirmation",
+        "payment_verified",
+      ),
     },
     {
-      key: "awaiting",
-      label: "Awaiting",
-      detail: "Transaction hash submitted and blockchain confirmations in progress.",
-      active: paymentStatus === "awaiting" || paymentStatus === "confirmed",
+      key: "submitted",
+      label: "Transaction submitted",
+      detail: "A transaction id was sent to the backend for verification.",
+      active: reached("transaction_submitted", "pending_confirmation", "payment_verified"),
     },
     {
-      key: "confirmed",
-      label: "Confirmed",
-      detail: "Treasury and reconciliation checks are complete.",
-      active: paymentStatus === "confirmed",
+      key: "pending",
+      label: "Pending confirmation",
+      detail: "Waiting for the chain to confirm the transfer. Nothing is settled yet.",
+      active: reached("pending_confirmation", "payment_verified"),
+    },
+    {
+      key: "verified",
+      label: "Payment verified",
+      detail: "The backend matched the on-chain transfer to the locked amount and address.",
+      active: reached("payment_verified"),
     },
   ];
 
@@ -393,62 +420,46 @@ export default function Checkout() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8 items-start">
-                <div className="rounded-3xl bg-white p-4 h-[220px] flex items-center justify-center relative">
-                  <ScanLine className="w-full h-full text-slate-200" />
-                  <div className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full bg-white text-amber-500 font-bold shadow-lg">
-                    {selectedOption.token}
-                  </div>
+              {authSession ? (
+                <CheckoutQuotePanel
+                  token={authSession.token}
+                  bookingId={bookingId}
+                  option={selectedOption}
+                  onReady={handlePaymentReady}
+                  onEnsureBooking={async () => {
+                    try {
+                      return await ensureBooking();
+                    } catch (err) {
+                      setFormError(err instanceof Error ? err.message : "Could not create the booking.");
+                      return null;
+                    }
+                  }}
+                />
+              ) : (
+                <div className="rounded-3xl border border-amber-500/20 bg-amber-500/10 p-6 text-sm text-amber-100/90">
+                  Sign in to request a price. Amounts are issued and signed off by the backend,
+                  so there is nothing to show until your session is known.
                 </div>
-
-                <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Wallet route</p>
-                    <p className="mt-3 text-lg font-semibold text-white">{selectedOption.display_name}</p>
-                    <p className="mt-2 break-all font-mono text-sm text-slate-300">{displayedWalletAddress}</p>
-                    <button type="button" onClick={handleCopy} disabled={!walletAddress && !selectedOption.wallet_address} className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm text-white hover:bg-white/[0.05] disabled:opacity-40">
-                      {copied ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4 text-amber-500" />} Copy address
-                    </button>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Quoted settlement</p>
-                    <p className="mt-3 text-2xl font-bold text-white">{selectedItem.cryptoPrice}</p>
-                    <p className="mt-1 text-sm text-slate-500">Approx. {selectedItem.fiatPrice}</p>
-                    {quotedAmount !== null && (
-                      <p className="mt-2 text-sm text-emerald-400">Backend quote initialized: {quotedAmount.toFixed(2)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 flex gap-3">
-                <ShieldAlert className="h-5 w-5 text-amber-400 mt-0.5" />
-                <p className="text-sm leading-6 text-amber-100/80">
-                  {canUseBackendCheckout
-                    ? "You can initialize payment here, or go straight to hash submission and the app will create the booking/payment automatically before sending the hash or proof image."
-                    : "Choose an item before continuing with checkout."}
-                </p>
-              </div>
+              )}
 
               <div className="flex flex-col md:flex-row gap-4 justify-between">
                 <button type="button" onClick={() => setCurrentStep(1)} className="rounded-2xl border border-white/10 px-6 py-4 text-slate-300 hover:bg-white/[0.04]">
                   Back
                 </button>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  {!authSession ? (
-                    <button type="button" onClick={() => navigate("/signin")} className="rounded-2xl border border-white/10 px-6 py-4 text-white hover:bg-white/[0.04]">
-                      Sign In to Initialize
-                    </button>
-                  ) : (
-                    <button type="button" onClick={handleInitializePayment} disabled={submitting || proofUploading || !canUseBackendCheckout} className="rounded-2xl border border-white/10 px-6 py-4 text-white hover:bg-white/[0.04] disabled:opacity-50">
-                      {submitting ? "Initializing..." : bookingId ? "Refresh Payment Route" : "Initialize Payment"}
-                    </button>
-                  )}
-                  <button type="button" onClick={() => setCurrentStep(3)} className="rounded-2xl bg-amber-500 px-6 py-4 font-semibold text-black hover:bg-amber-400 inline-flex items-center gap-2">
-                    Go to Hash Submission <ArrowRight className="h-4 w-4" />
+                {!authSession ? (
+                  <button type="button" onClick={() => navigate("/signin")} className="rounded-2xl border border-white/10 px-6 py-4 text-white hover:bg-white/[0.04]">
+                    Sign In to Continue
                   </button>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(3)}
+                    disabled={!payment}
+                    className="rounded-2xl bg-amber-500 px-6 py-4 font-semibold text-black hover:bg-amber-400 inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {payment ? "Submit Your Transaction" : "Approve the price first"} <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -465,9 +476,15 @@ export default function Checkout() {
                     {submitting ? "Submitting..." : "Submit Hash"} <FileDigit className="h-4 w-4" />
                   </button>
                 </div>
-                {!bookingId && (
+                {payment ? (
+                  <p className="mt-3 text-sm text-slate-400">
+                    Verifying against <span className="font-mono text-slate-300">{payment.crypto_amount} {payment.token}</span>{" "}
+                    to <span className="font-mono text-slate-300">{payment.wallet_address}</span> on {payment.chain}.
+                    A transaction that pays less, pays elsewhere, or reverted will not settle this order.
+                  </p>
+                ) : (
                   <p className="mt-3 text-sm text-amber-300">
-                    No booking exists yet. When you submit the hash, AeroLedger will create the booking and initialize payment automatically first.
+                    No price has been locked yet. Go back and approve a quote first.
                   </p>
                 )}
               </div>
@@ -513,8 +530,8 @@ export default function Checkout() {
               </div>
 
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-t border-white/10 pt-4">
-                <p className="text-sm text-slate-400">Current state: <span className="font-semibold text-white">{paymentStatus === "idle" ? "waiting for initialization" : paymentStatus}</span></p>
-                {paymentStatus === "confirmed" ? (
+                <p className="text-sm text-slate-400">Current state: <span className="font-semibold text-white">{CHECKOUT_PHASE_LABELS[phase]}</span></p>
+                {phase === "payment_verified" ? (
                   <Link to={orderLink} className="rounded-2xl bg-emerald-500 px-6 py-4 font-semibold text-black hover:bg-emerald-400 inline-flex items-center gap-2">
                     Open Order Tracking <ArrowRight className="h-4 w-4" />
                   </Link>
@@ -539,20 +556,20 @@ export default function Checkout() {
                 <span className="text-white">{selectedItem.category}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Settlement</span>
-                <span className="text-white">{selectedItem.cryptoPrice}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Fiat estimate</span>
+                <span className="text-slate-500">Catalogue estimate</span>
                 <span className="text-white">{selectedItem.fiatPrice}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Backend flow</span>
-                <span className="text-white">{canUseBackendCheckout ? "Available" : "Unavailable"}</span>
+                <span className="text-slate-500">Amount owed</span>
+                <span className="text-white">
+                  {payment
+                    ? `${payment.crypto_amount} ${payment.token}`
+                    : "Set by the server quote"}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Booking</span>
-                <span className="text-white">{bookingId ?? "Will be created automatically"}</span>
+                <span className="text-white">{bookingId ?? "Created when you request a price"}</span>
               </div>
             </div>
           </div>

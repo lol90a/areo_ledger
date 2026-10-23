@@ -1,0 +1,15 @@
+target/
+contracts/solana/programs/aeroledger-escrow/target/
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.env
+node_modules/
+uploads/
+.env
+.env.production
+.git/
+.amazonq/
+*.log
+Dockerfile*
+docker-compose*.yml
+README.md
