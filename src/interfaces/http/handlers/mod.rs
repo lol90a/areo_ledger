@@ -1,4 +1,5 @@
 pub mod booking_handler;
+pub mod catalog_handler;
 pub mod health_handler;
 pub mod payment_handler;
 pub mod transaction_handler;

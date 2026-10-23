@@ -50,11 +50,13 @@ impl UserRepository for PgUserRepository {
 
     async fn find_by_email(&self, email: &str) -> Result<User, DomainError> {
         let client = self.client().await?;
+        // Case-insensitive lookup so login is not defeated by email casing.
+        let normalized = email.trim().to_ascii_lowercase();
         let row = client
             .query_one(
                 "SELECT id, email, name, role, password_hash, wallet_address_eth \
-                 FROM users WHERE email = $1",
-                &[&email],
+                 FROM users WHERE LOWER(email) = $1",
+                &[&normalized],
             )
             .await
             .map_err(|_| DomainError::NotFound(format!("User with email {}", email)))?;
@@ -77,7 +79,14 @@ impl UserRepository for PgUserRepository {
                 ],
             )
             .await
-            .map_err(|e| InfraError::Database(e.to_string()))?;
+            .map_err(|e| {
+                // A duplicate email is a client conflict (409), not an internal error (500).
+                if e.code() == Some(&tokio_postgres::error::SqlState::UNIQUE_VIOLATION) {
+                    DomainError::Conflict("Email already registered".to_string())
+                } else {
+                    InfraError::Database(e.to_string()).into()
+                }
+            })?;
         Ok(())
     }
 

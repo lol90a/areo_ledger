@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification};
+use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification, VerifyRequest};
 use crate::infrastructure::blockchain::bitcoin_gateway::BitcoinGateway;
 use crate::infrastructure::blockchain::evm_gateway::EvmGateway;
 use crate::infrastructure::blockchain::solana_gateway::SolanaGateway;
@@ -13,6 +13,7 @@ pub struct MultiChainGateway {
     solana: SolanaGateway,
     bitcoin: BitcoinGateway,
     wallets: HashMap<String, String>,
+    verification_mode: String,
 }
 
 impl MultiChainGateway {
@@ -22,6 +23,7 @@ impl MultiChainGateway {
         solana: SolanaGateway,
         bitcoin: BitcoinGateway,
         wallets: HashMap<String, String>,
+        verification_mode: String,
     ) -> Self {
         Self {
             ethereum,
@@ -29,7 +31,12 @@ impl MultiChainGateway {
             solana,
             bitcoin,
             wallets,
+            verification_mode,
         }
+    }
+
+    pub fn is_manual(&self) -> bool {
+        self.verification_mode == "manual"
     }
 }
 
@@ -43,32 +50,26 @@ impl BlockchainGateway for MultiChainGateway {
 
     async fn verify_transaction(
         &self,
-        chain: &str,
-        tx_hash: &str,
-        expected_to: &str,
-        expected_amount_cents: i64,
+        request: &VerifyRequest,
     ) -> Result<TxVerification, DomainError> {
-        match chain {
-            "Ethereum" => {
-                self.ethereum
-                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
-                    .await
-            }
-            "BSC" => {
-                self.bsc
-                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
-                    .await
-            }
-            "Solana" => {
-                self.solana
-                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
-                    .await
-            }
-            "Bitcoin" => {
-                self.bitcoin
-                    .verify_transaction(chain, tx_hash, expected_to, expected_amount_cents)
-                    .await
-            }
+        // Manual mode: no on-chain lookup. Only permitted in development (enforced by
+        // AppConfig::validate); treats a well-formed hash as a settled payment so the
+        // demo checkout flow works without a live chain.
+        if self.verification_mode == "manual" {
+            return Ok(TxVerification {
+                verified: true,
+                base_units: request.expected_base_units,
+                confirmations: 99,
+                from_address: "manual-verification".to_string(),
+                to_address: request.expected_to.clone(),
+            });
+        }
+
+        match request.chain.as_str() {
+            "Ethereum" => self.ethereum.verify_transaction(request).await,
+            "BSC" => self.bsc.verify_transaction(request).await,
+            "Solana" => self.solana.verify_transaction(request).await,
+            "Bitcoin" => self.bitcoin.verify_transaction(request).await,
             other => Err(DomainError::ValidationError(format!(
                 "Unsupported verification chain: {}",
                 other

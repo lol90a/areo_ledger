@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: areo-ledger-postgres
+    environment:
+      POSTGRES_DB: aeroledger
+      POSTGRES_USER: aeroledger
+      POSTGRES_PASSWORD: aeroledger123
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeroledger -d aeroledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

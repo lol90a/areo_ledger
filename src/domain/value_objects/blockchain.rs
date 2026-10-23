@@ -1,8 +1,9 @@
 use crate::shared::errors::DomainError;
 use std::fmt;
 
-/// A validated, canonical transaction hash.
-/// Enforces minimum length and hex format at construction time.
+/// A validated, canonical transaction hash/signature.
+/// Accepts hex EVM/BTC hashes and base58-style Solana signatures; chain-specific
+/// final validation stays in the gateway.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TxHash(String);
 
@@ -16,9 +17,9 @@ impl TxHash {
                 s
             )));
         }
-        if !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !trimmed.chars().all(|c| c.is_ascii_alphanumeric()) {
             return Err(DomainError::ValidationError(format!(
-                "Transaction hash contains non-hex characters: '{}'",
+                "Transaction hash contains unsupported characters: '{}'",
                 s
             )));
         }

@@ -1,4 +1,4 @@
-use bcrypt::verify;
+use bcrypt::{hash, verify, DEFAULT_COST};
 
 use crate::application::dto::{AuthenticateUserInput, UserOutput};
 use crate::domain::repositories::user_repository::UserRepository;
@@ -14,25 +14,37 @@ impl<R: UserRepository> AuthenticateUser<R> {
     }
 
     pub async fn execute(&self, input: AuthenticateUserInput) -> Result<UserOutput, DomainError> {
-        let user = self
-            .user_repo
-            .find_by_email(&input.email)
-            .await
-            .map_err(|_| DomainError::Unauthorized)?;
+        let email = input.email.trim().to_ascii_lowercase();
+        let password = input.password.clone();
 
-        let valid = verify(&input.password, &user.password_hash)
-            .map_err(|e| DomainError::InternalError(e.to_string()))?;
+        let user = self.user_repo.find_by_email(&email).await.ok();
 
-        if !valid {
-            return Err(DomainError::Unauthorized);
+        // Constant-time-ish: always spend a bcrypt cycle so a missing email and a wrong
+        // password take the same wall-clock time (defeats user enumeration by timing).
+        let valid = match &user {
+            Some(u) => {
+                let stored = u.password_hash.clone();
+                tokio::task::spawn_blocking(move || verify(&password, &stored).unwrap_or(false))
+                    .await
+                    .map_err(|e| DomainError::InternalError(e.to_string()))?
+            }
+            None => {
+                let _ = tokio::task::spawn_blocking(move || hash(&password, DEFAULT_COST))
+                    .await
+                    .map_err(|e| DomainError::InternalError(e.to_string()))?;
+                false
+            }
+        };
+
+        match user {
+            Some(u) if valid => Ok(UserOutput {
+                id: u.id,
+                email: u.email,
+                name: u.name,
+                role: u.role.as_str().to_string(),
+                wallet_address: u.wallet_address,
+            }),
+            _ => Err(DomainError::Unauthorized),
         }
-
-        Ok(UserOutput {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role.as_str().to_string(),
-            wallet_address: user.wallet_address,
-        })
     }
 }

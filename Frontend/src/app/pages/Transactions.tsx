@@ -125,8 +125,7 @@ export default function Transactions() {
             <Filter className="w-4 h-4 text-slate-300" />
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-transparent text-sm text-white outline-none">
               <option value="all" className="bg-black">All statuses</option>
-              <option value="initialized" className="bg-black">Initialized</option>
-              <option value="awaiting" className="bg-black">Awaiting</option>
+              <option value="pending" className="bg-black">Pending</option>
               <option value="confirmed" className="bg-black">Confirmed</option>
               <option value="failed" className="bg-black">Failed</option>
             </select>
@@ -200,11 +199,9 @@ export default function Transactions() {
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
                       transaction.status === "confirmed"
                         ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                        : transaction.status === "awaiting"
+                        : transaction.status === "pending"
                           ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                          : transaction.status === "initialized"
-                            ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
-                            : "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                          : "bg-rose-500/10 text-rose-500 border-rose-500/20"
                     }`}>
                       {transaction.status}
                     </span>

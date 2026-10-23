@@ -59,12 +59,48 @@ impl CryptoToken {
             _ => None,
         }
     }
-    /// Smallest unit decimals (for display/conversion only — never for arithmetic).
+    /// Number of decimal places in the token's smallest on-chain unit.
+    /// BTC=8 (sats), SOL=9 (lamports), ETH/BNB=18 (wei), USDT/USDC=6 (ERC-20 stablecoins).
     pub fn decimals(self) -> u8 {
         match self {
             Self::Btc => 8,
             Self::Sol => 9,
-            _ => 18,
+            Self::Usdt | Self::Usdc => 6,
+            Self::Eth | Self::Bnb => 18,
+        }
+    }
+
+    /// True for ERC-20 tokens whose transfer value lives in contract logs, not the
+    /// native `value` field of a transaction.
+    pub fn is_erc20(self) -> bool {
+        matches!(self, Self::Usdt | Self::Usdc)
+    }
+
+    /// True for fiat-pegged stablecoins (priced at ~1 USD).
+    pub fn is_stablecoin(self) -> bool {
+        matches!(self, Self::Usdt | Self::Usdc)
+    }
+
+    /// Canonical Ethereum-mainnet ERC-20 contract address for token-transfer
+    /// verification. `None` for native assets. The `_contract` metadata is only
+    /// used to locate the ERC-20 `Transfer` log for the configured receiver.
+    pub fn erc20_contract(self) -> Option<&'static str> {
+        match self {
+            Self::Usdt => Some("0xdac17f958d2ee523a2206206994597c13d831ec7"),
+            Self::Usdc => Some("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"),
+            _ => None,
+        }
+    }
+
+    /// CoinGecko id used by the live price oracle.
+    pub fn coingecko_id(self) -> &'static str {
+        match self {
+            Self::Btc => "bitcoin",
+            Self::Eth => "ethereum",
+            Self::Usdt => "tether",
+            Self::Usdc => "usd-coin",
+            Self::Sol => "solana",
+            Self::Bnb => "binancecoin",
         }
     }
 }
@@ -107,9 +143,44 @@ pub fn resolve_chain_token(method: &str) -> Option<(Chain, CryptoToken)> {
         "usdt" => Some((Chain::Ethereum, CryptoToken::Usdt)),
         "usdc" => Some((Chain::Ethereum, CryptoToken::Usdc)),
         "sol" => Some((Chain::Solana, CryptoToken::Sol)),
-        "binance" => Some((Chain::Bsc, CryptoToken::Bnb)),
+        "bsc" | "bnb" | "binance" => Some((Chain::Bsc, CryptoToken::Bnb)),
         _ => None,
     }
+}
+
+// ── Crypto conversion helpers ─────────────────────────────────────────────────
+
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
+
+/// Convert a fiat total into a crypto amount (whole token units) given the token's
+/// current USD unit price. Rounds up to the token's smallest unit so the platform is
+/// never underpaid by rounding. Returns `None` on a non-positive price.
+pub fn usd_to_crypto_amount(
+    usd: Decimal,
+    unit_price_usd: Decimal,
+    decimals: u8,
+) -> Option<Decimal> {
+    if unit_price_usd <= Decimal::ZERO {
+        return None;
+    }
+    let raw = usd.checked_div(unit_price_usd)?;
+    // Round the quote to the token's on-chain precision, rounding up (favor the platform).
+    Some(raw.round_dp_with_strategy(
+        decimals as u32,
+        rust_decimal::RoundingStrategy::AwayFromZero,
+    ))
+}
+
+/// Convert a whole-token decimal amount into the token's smallest integer unit
+/// (wei / lamports / satoshis / ERC-20 base units).
+pub fn crypto_base_units(amount: Decimal, decimals: u8) -> Option<u128> {
+    if amount < Decimal::ZERO {
+        return None;
+    }
+    let scale = Decimal::from(10u64.checked_pow(decimals as u32)?);
+    let scaled = amount.checked_mul(scale)?;
+    scaled.round().to_u128()
 }
 
 // ── Money ─────────────────────────────────────────────────────────────────────
@@ -160,20 +231,43 @@ impl Money {
     }
 
     /// Construct from a decimal string "9500.00" — used ONLY at DB/API boundaries.
+    /// Rejects negative and non-numeric input; never panics on multi-byte UTF-8.
     pub fn from_decimal_str(s: &str, currency: FiatCurrency) -> Result<Self, MoneyError> {
         let s = s.trim();
-        let parts: Vec<&str> = s.splitn(2, '.').collect();
-        let whole: i64 = parts[0]
+        if s.starts_with('-') {
+            return Err(MoneyError::NegativeAmount);
+        }
+        let mut parts = s.splitn(2, '.');
+        let whole_str = parts.next().unwrap_or("");
+        let whole: i64 = whole_str
             .parse()
             .map_err(|_| MoneyError::ParseError(s.to_string()))?;
-        let frac: i64 = if parts.len() == 2 {
-            let raw = format!("{:0<2}", &parts[1][..parts[1].len().min(2)]);
-            raw.parse()
-                .map_err(|_| MoneyError::ParseError(s.to_string()))?
-        } else {
-            0
+
+        let frac: i64 = match parts.next() {
+            Some(frac_str) => {
+                // Take at most the first two *characters* (cents), padding on the right.
+                let mut digits = String::with_capacity(2);
+                for ch in frac_str.chars().take(2) {
+                    if !ch.is_ascii_digit() {
+                        return Err(MoneyError::ParseError(s.to_string()));
+                    }
+                    digits.push(ch);
+                }
+                while digits.len() < 2 {
+                    digits.push('0');
+                }
+                digits
+                    .parse()
+                    .map_err(|_| MoneyError::ParseError(s.to_string()))?
+            }
+            None => 0,
         };
-        Self::from_cents(whole * 100 + frac, currency)
+
+        let cents = whole
+            .checked_mul(100)
+            .and_then(|v| v.checked_add(frac))
+            .ok_or(MoneyError::Overflow)?;
+        Self::from_cents(cents, currency)
     }
 
     pub fn zero(currency: FiatCurrency) -> Self {
@@ -193,6 +287,11 @@ impl Money {
     /// Decimal string for serialization/display — never for arithmetic.
     pub fn to_decimal_str(self) -> String {
         format!("{}.{:02}", self.cents / 100, (self.cents % 100).abs())
+    }
+
+    /// Exact decimal value (currency units) for crypto conversion math.
+    pub fn to_decimal(self) -> rust_decimal::Decimal {
+        rust_decimal::Decimal::from(self.cents) / rust_decimal::Decimal::from(100)
     }
 
     pub fn checked_add(self, other: Self) -> Result<Self, MoneyError> {

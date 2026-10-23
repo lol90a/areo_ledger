@@ -2,6 +2,22 @@
 
 AeroLedger is a crypto-native commerce platform for private aviation and luxury marketplace purchases. It combines a Rust backend with a React + Vite frontend to support browsing, cart management, protected checkout, crypto payment initialization, transaction-hash confirmation, payment-proof uploads, and transaction tracking across multiple blockchains.
 
+> ### Security documentation
+>
+> This repository carries a full security review and remediation record. Read these
+> before changing anything in a payment path:
+>
+> | Document | What it covers |
+> |---|---|
+> | [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) | Every finding, its root cause, the attack scenario, the fix, the test that proves it, and an explicit list of what has **not** been verified |
+> | [`ARCHITECTURE.md`](ARCHITECTURE.md) | System design, trust boundaries, the price-quote lifecycle, and which of the two payment paths is actually live |
+> | [`INTERVIEW_PREPARATION.md`](INTERVIEW_PREPARATION.md) | Walkthrough of each change: problem, attack, fix, why it works, evidence |
+>
+> **Two things to know up front.** The on-chain escrow contracts are built and
+> tested but **not yet wired into the backend** — the live flow is direct payment
+> with on-chain verification (`ARCHITECTURE.md` §5). And credentials committed to
+> this repository's history still require rotation (`SECURITY_AUDIT.md` OPS-01).
+
 ## Highlights
 
 - Flight booking checkout and marketplace asset checkout
@@ -50,7 +66,9 @@ AeroLedger is a crypto-native commerce platform for private aviation and luxury 
 |   |-- src/app/            # Pages, routes, UI, helpers, local data
 |   `-- package.json
 |-- migrations/             # PostgreSQL schema and migration SQL
-|-- deploy/                 # Deployment assets
+|-- Dockerfile              # Backend image
+|-- docker-compose.prod.yml # Production stack (backend, migrate, frontend, postgres)
+|-- Frontend/nginx.conf     # Frontend nginx config / API reverse proxy
 |-- tests/                  # Test scaffolding
 |-- .env.example
 |-- .env.production
@@ -83,7 +101,6 @@ All API routes are served under `/api`.
 
 Protected routes require a valid JWT.
 
-<<<<<<< HEAD
 ## Checkout Flow
 
 The current checkout flow supports both flight items and marketplace assets:
@@ -97,11 +114,7 @@ The current checkout flow supports both flight items and marketplace assets:
 7. Optionally upload a payment screenshot as proof.
 8. Track status from initialized to awaiting to confirmed.
 
-
 ## Running the Backend
-=======
-
->>>>>>> 8cf27dd8bb519e54a89d3f05ebfaaebf1b010de0
 
 Make sure PostgreSQL is available and `DATABASE_URL` is valid, then run:
 
@@ -168,14 +181,21 @@ npm run build
 
 ## Deployment Notes
 
-Production deployment assets are stored in `deploy/`.
+Production deployment assets live at the repository root and under `Frontend/`.
 
 Useful files include:
 
-- `deploy/docker-compose.prod.yml`
-- `deploy/nginx.conf`
+- `./docker-compose.prod.yml`
+- `Frontend/nginx.conf`
 - `Dockerfile`
-- `.env.production`
+- `.env.production` (create from `.env.production.example`; never commit real secrets)
+
+To launch the production stack, create `.env.production` from `.env.production.example`,
+fill in real values, then run:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
 
 ## Current Status
 
