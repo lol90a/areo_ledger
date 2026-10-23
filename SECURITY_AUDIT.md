@@ -84,7 +84,7 @@ and hygiene.
 | [FE-04](#fe-04) | Medium | Offline fallback advertised payment routes as available | Fixed |
 | [FE-05](#fe-05) | Medium | Status vocabulary did not describe real settlement states | Fixed |
 | [FE-06](#fe-06) | Low | JWT in `localStorage` | **Accepted risk, documented** |
-| [OPS-01](#ops-01) | High | Live credentials remain in git history | **Open — rotation required** |
+| [OPS-01](#ops-01) | **Critical** | Live credentials committed to a public repository | **Open — revoke and rotate now** |
 
 ---
 
@@ -841,7 +841,31 @@ are recommended before handling real funds.
 ## 6. Operational
 
 ### OPS-01
-**Live credentials remain in git history** — High, **OPEN, rotation required**
+**Live credentials are committed to a public repository** — **Critical, OPEN,
+rotation required before anything else in this document matters**
+
+Two separate exposures. The second is the urgent one.
+
+#### OPS-01a — `.env.example` on the default branch, right now
+
+`.env.example` is a **tracked file on `main`**, in a **public** repository (the
+GitHub compare view renders for a signed-out browser), and the committed version
+contains:
+
+| Variable | Assessment |
+|---|---|
+| `ETHERSCAN_API_KEY` | 34 characters, not a placeholder — **a live API key** |
+| `SOLANA_RPC_URL` | a QuickNode mainnet endpoint whose **URL path is the auth token** — anyone with the URL can bill the account |
+| `BITCOIN_API_BASE` | a 40-character hex string where a URL belongs — not a secret, but it means this value was never a working config |
+
+This is worse than a key buried in history: `.env.example` is the file people are
+*told* to read and copy. It has been publicly readable for as long as it has been
+committed, and both values should be assumed compromised.
+
+The branch this audit was written on replaces all three with `CHANGE_ME`
+placeholders, which stops the ongoing leak — **it does not undo the exposure.**
+
+#### OPS-01b — `.env.production` in history
 
 `.env.production` was removed from the working tree in commit `d9889fd`
 ("Remove sensitive data from .env.production"). **That does not remove it from
@@ -860,14 +884,19 @@ though they do disclose the treasury.
 
 **Required actions, none of which this work can perform:**
 
-1. Rotate the database credentials and the Etherscan key **now**. Anyone who has
-   ever cloned this repository has them.
-2. Rotate `JWT_SECRET`. Every existing session token becomes invalid, which is the
+1. **Revoke the QuickNode endpoint and the Etherscan key now.** They are on the
+   default branch of a public repository; assume they are already scraped. Billing
+   abuse on a paid RPC endpoint is the immediate exposure.
+2. Rotate the database credentials from OPS-01b. Anyone who has ever cloned this
+   repository has them.
+3. Rotate `JWT_SECRET`. Every existing session token becomes invalid, which is the
    point.
-3. Decide whether to purge history (`git filter-repo`, then force-push and have every
+4. Decide whether to purge history (`git filter-repo`, then force-push and have every
    collaborator re-clone) — note that this rewrites every commit hash and that
    GitHub may retain unreachable objects, so **rotation is mandatory regardless**.
-4. Add secret scanning to CI.
+5. Add secret scanning to CI, and enable GitHub push protection on the repository.
+6. Consider whether this repository should be public at all while it is a payments
+   codebase under active remediation.
 
 `.gitignore` already covers `.env` and `.env.production`, and `.env.example` now
 carries only `CHANGE_ME` placeholders, so the ongoing leak is closed — the
@@ -957,6 +986,6 @@ Stated plainly, because the value of the rest depends on this list being honest.
 | Post-acceptance FX exposure | Deliberate: the alternative is re-charging a customer mid-payment | Cap the settlement window; hedge; or require faster settlement |
 | Stablecoin de-peg between quote and settlement | USDT/USDC are quoted at the peg by policy | Quote stablecoins from the oracle too, or add a de-peg circuit breaker |
 | JWT in `localStorage` ([FE-06](#fe-06)) | Cookie sessions need a backend redesign | `HttpOnly` cookies + CSRF; add a CSP |
-| Credentials in git history ([OPS-01](#ops-01)) | Cannot be undone from here | Rotate now; then decide on history rewriting |
+| Live credentials public ([OPS-01](#ops-01)) | Cannot be undone from here | Revoke the RPC endpoint and API key now; then rotate the rest and decide on history rewriting |
 | Escrow contracts not wired to the backend | Architectural work beyond this round | See `ARCHITECTURE.md` |
 | Anchor tests unexecuted | Toolchain unavailable here | Run `anchor test` on a machine with the toolchain |
