@@ -258,6 +258,15 @@ pub mod aeroledger_escrow {
     /// every order the merchant is party to. Payout destinations are therefore never
     /// chosen at settlement time by whoever happens to be signing.
     pub fn register_merchant(ctx: Context<RegisterMerchant>, payout_wallet: Pubkey) -> Result<()> {
+        // `merchant_authority` is an UncheckedAccount that never signs here, so it is
+        // whatever key governance passed. The default pubkey has no private key, so
+        // registering it would create a seller who can never sign `confirm_order` --
+        // every order against them would be stuck until refunded. Rejected for the
+        // same reason, and in the same way, as every other authority in this program.
+        require!(
+            ctx.accounts.merchant_authority.key() != Pubkey::default(),
+            EscrowError::InvalidAuthority
+        );
         require!(
             payout_wallet != Pubkey::default(),
             EscrowError::InvalidAuthority

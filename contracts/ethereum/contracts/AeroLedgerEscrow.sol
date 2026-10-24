@@ -55,8 +55,10 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  *      - All ERC20 movements use SafeERC20, so non-standard tokens (USDT returns no
  *        bool) work and silent-false transfers revert.
  *      - The contract measures the **actual** received balance delta and requires it
- *        to be at least the quoted amount. A fee-on-transfer token therefore reverts
- *        rather than under-funding an order: see SECURITY_AUDIT.md (EVM-07).
+ *        to be at least the quoted amount. A token that taxes the INBOUND transfer
+ *        therefore reverts rather than under-funding an order: see
+ *        SECURITY_AUDIT.md (EVM-07). An outbound-only tax is out of scope and is
+ *        excluded by the token allow-list, not by code — see {createOrderERC20}.
  *      - Native transfers use a checked low-level call, so a multisig payout address
  *        cannot be bricked by the 2300-gas stipend.
  *      - Checks-Effects-Interactions plus nonReentrant on every value-moving path.
@@ -266,9 +268,22 @@ contract AeroLedgerEscrow is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /**
      * @notice Create an ERC20 escrow order against a signed quote.
      * @dev Credits the measured balance delta and requires it to be at least the
-     *      quoted amount, so a fee-on-transfer token reverts rather than silently
-     *      under-funding the seller. Surplus (a rebase up mid-call) stays with the
-     *      order and settles to the treasury.
+     *      quoted amount, so a token that taxes the INBOUND transfer reverts here
+     *      rather than silently under-funding the seller against a signed quote.
+     *
+     *      A surplus (a rebase up mid-call) is credited to the order, so it is paid
+     *      out to the **seller**: `order.amount` becomes the received figure while
+     *      the fee stays at the signed `q.fee`, giving `sellerAmount = received -
+     *      fee`. This differs from the Solana twin, where completion sweeps
+     *      everything above the quoted amount to the treasury. Neither strands
+     *      value; they pick a different beneficiary for the dust.
+     *
+     *      Not covered: a token that taxes only the OUTBOUND transfer. It passes
+     *      {_pullTokens}, and at payout the recipients receive less than the quote
+     *      while `escrowBalance` is debited by the full amount. That underpays the
+     *      seller and treasury but cannot break the per-asset solvency invariant or
+     *      reach another order's funds. The owner-managed {supportedTokens}
+     *      allow-list is the control: do not list such a token.
      */
     function createOrderERC20(QuoteInput calldata q) external nonReentrant whenNotPaused {
         if (q.token == NATIVE) revert NotERC20();
