@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use rust_decimal::Decimal;
 
+use crate::domain::entities::quote::MAX_RATE_AGE_SECONDS;
 use crate::domain::ports::price_oracle::{PriceOracle, TokenRate};
 use crate::domain::value_objects::CryptoToken;
 use crate::infrastructure::db::DbPool;
@@ -106,6 +107,20 @@ impl MarketPriceOracle {
         }
     }
 
+    /// Whether a row from `crypto_prices` is worth returning.
+    ///
+    /// In **live** mode it always is: the quote layer will refuse a stale rate, and
+    /// failing the sale is the right outcome when a real customer is being priced.
+    ///
+    /// Outside live mode the seeded row is a development convenience rather than a
+    /// price feed. Once it ages past what a quote will accept, returning it makes
+    /// local checkout fail permanently with a stale-rate error, while the static
+    /// floor below would have produced a usable (clearly-labelled) price. So a stale
+    /// row is skipped and the floor is used instead.
+    fn db_rate_is_usable(live: bool, age_seconds: i64) -> bool {
+        live || age_seconds <= MAX_RATE_AGE_SECONDS
+    }
+
     /// Conservative last-resort prices. Only ever used OUTSIDE live mode (local
     /// development): quoting a real customer from an invented rate would charge them
     /// the wrong amount, so live mode fails closed instead.
@@ -157,17 +172,26 @@ impl PriceOracle for MarketPriceOracle {
         }
 
         if let Some((price, observed_at)) = self.fetch_db(token).await {
-            let rate = TokenRate {
-                unit_price_usd: price,
-                source: "database".to_string(),
-                observed_at,
-            };
-            // Only cache a DB rate that is actually fresh; a stale row must keep
-            // looking stale to the quote layer.
-            if now.signed_duration_since(observed_at).num_seconds() < CACHE_TTL_SECONDS {
-                self.store(token, &rate);
+            let age = now.signed_duration_since(observed_at).num_seconds();
+            if Self::db_rate_is_usable(self.live, age) {
+                let rate = TokenRate {
+                    unit_price_usd: price,
+                    source: "database".to_string(),
+                    observed_at,
+                };
+                // Only cache a DB rate that is actually fresh; a stale row must keep
+                // looking stale to the quote layer.
+                if age < CACHE_TTL_SECONDS {
+                    self.store(token, &rate);
+                }
+                return Ok(rate);
             }
-            return Ok(rate);
+            log::warn!(
+                "price oracle: the crypto_prices row for {} is {}s old (limit {}s); using the development static floor",
+                token.as_str(),
+                age,
+                MAX_RATE_AGE_SECONDS
+            );
         }
 
         if self.live {
@@ -190,5 +214,58 @@ impl PriceOracle for MarketPriceOracle {
             source: "static-floor-dev".to_string(),
             observed_at: now,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fresh_db_row_is_used_in_either_mode() {
+        assert!(MarketPriceOracle::db_rate_is_usable(true, 10));
+        assert!(MarketPriceOracle::db_rate_is_usable(false, 10));
+    }
+
+    #[test]
+    fn a_row_exactly_at_the_limit_is_still_usable() {
+        assert!(MarketPriceOracle::db_rate_is_usable(
+            false,
+            MAX_RATE_AGE_SECONDS
+        ));
+    }
+
+    #[test]
+    fn live_mode_keeps_a_stale_row_so_the_quote_layer_refuses_the_sale() {
+        // Returning it is the point: `PaymentQuote::issue` rejects it and the
+        // customer is not priced from a day-old number.
+        assert!(MarketPriceOracle::db_rate_is_usable(
+            true,
+            MAX_RATE_AGE_SECONDS + 1
+        ));
+        assert!(MarketPriceOracle::db_rate_is_usable(true, 200_000));
+    }
+
+    #[test]
+    fn dev_mode_skips_a_stale_row_so_local_checkout_falls_back_to_the_floor() {
+        assert!(!MarketPriceOracle::db_rate_is_usable(
+            false,
+            MAX_RATE_AGE_SECONDS + 1
+        ));
+        assert!(!MarketPriceOracle::db_rate_is_usable(false, 200_000));
+    }
+
+    #[test]
+    fn the_development_floor_is_positive_for_every_token() {
+        for token in [
+            CryptoToken::Btc,
+            CryptoToken::Eth,
+            CryptoToken::Sol,
+            CryptoToken::Bnb,
+            CryptoToken::Usdt,
+            CryptoToken::Usdc,
+        ] {
+            assert!(MarketPriceOracle::static_floor(token) > Decimal::ZERO);
+        }
     }
 }

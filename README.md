@@ -114,23 +114,38 @@ The current checkout flow supports both flight items and marketplace assets:
 7. Optionally upload a payment screenshot as proof.
 8. Track status from initialized to awaiting to confirmed.
 
-## Running the Backend
+## Running it locally
 
-Make sure PostgreSQL is available and `DATABASE_URL` is valid, then run:
+Three processes, in this order: database, backend, frontend.
+
+### 1. Database
+
+`docker-compose.yml` defines the dev Postgres (database `aeroledger`, user
+`aeroledger`, published on host port **5435** so it does not collide with any other
+Postgres you are running):
 
 ```bash
-cargo run
+docker compose up -d postgres
 ```
 
-Default backend address:
+### 2. Backend
 
-```text
-http://127.0.0.1:8080
+```bash
+cp .env.example .env     # first time only; set DATABASE_URL and a real 32+ char JWT_SECRET
+cargo run --bin areo_ledger
 ```
 
-## Running the Frontend
+`--bin areo_ledger` is required: the crate ships **two** binaries, the server and
+the standalone `migrate` runner, so a bare `cargo run` cannot pick one and exits.
 
-From the `Frontend/` directory:
+Migrations run automatically at startup while `RUN_MIGRATIONS=true` (development
+only — `validate()` rejects that combination when `APP_ENV=production`). To run them
+as a separate deployment step instead, use `cargo run --bin migrate`.
+
+The server binds `HOST:PORT`, which default to `127.0.0.1:8080`. The committed dev
+`.env` overrides `PORT=8071`.
+
+### 3. Frontend
 
 ```bash
 cd Frontend
@@ -138,7 +153,37 @@ npm install
 npm run dev
 ```
 
-The frontend uses Vite. Set `VITE_API_BASE_URL` if you need a different backend base URL.
+Vite serves on **`http://127.0.0.1:3001`** (`strictPort: true` — it fails rather
+than silently moving to another port).
+
+### Keeping the three in agreement
+
+Three values have to line up, and a mismatch is the usual cause of a dead
+checkout with CORS errors in the console:
+
+| Value | Set in | Must equal |
+|---|---|---|
+| `PORT` | root `.env` | the port in `VITE_API_BASE_URL` |
+| `VITE_API_BASE_URL` | `Frontend/.env` | `http://HOST:PORT` of the backend |
+| `FRONTEND_URL` | root `.env` | the Vite origin (`http://127.0.0.1:3001`) — it is the CORS allow-list entry |
+
+`Frontend/.env` is **not** committed (it is machine-specific), and the fallback
+baked into `Frontend/src/app/lib/api.ts` is `http://127.0.0.1:8081`. On a fresh
+clone you must create it:
+
+```bash
+echo "VITE_API_BASE_URL=http://127.0.0.1:8071" > Frontend/.env
+```
+
+### Verify the stack is up
+
+```bash
+curl http://127.0.0.1:8071/api/health
+```
+
+```json
+{"service":"AeroLedger","status":"ok","version":"1.0.0"}
+```
 
 ## Migrations
 

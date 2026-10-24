@@ -445,15 +445,23 @@ EVM-specific properties:
 ## 13. Local development
 
 ```bash
-# Database
-docker run --rm -d --name aeroledger-db \
-  -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+# Database (docker-compose.yml: db/user `aeroledger`, host port 5435)
+docker compose up -d postgres
 
-cp .env.example .env    # set DATABASE_URL and a real 32+ char JWT_SECRET
-cargo run               # migrations run automatically outside production
+cp .env.example .env            # set DATABASE_URL and a real 32+ char JWT_SECRET
+cargo run --bin areo_ledger     # migrations run automatically outside production
 
-cd Frontend && npm install && npm run dev
+cd Frontend && npm install && npm run dev   # Vite, strictPort, 127.0.0.1:3001
 ```
+
+`--bin areo_ledger` is not optional: the crate has two binaries (the server and the
+`migrate` runner), so a bare `cargo run` is ambiguous and exits without starting
+anything.
+
+The backend binds `HOST:PORT` (default `127.0.0.1:8080`; the dev `.env` sets
+`PORT=8071`). Three values must agree or the browser gets CORS failures: backend
+`PORT`, `VITE_API_BASE_URL` in the untracked `Frontend/.env`, and `FRONTEND_URL` in
+the root `.env`, which is the CORS allow-list entry for the Vite origin.
 
 ### Test commands
 
@@ -463,7 +471,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --lib
 
-# Backend integration (real Postgres)
+# Backend integration (real Postgres, throwaway container on 55439)
 docker run --rm -d --name aeroledger-test \
   -e POSTGRES_PASSWORD=postgres -p 55439:5432 postgres:16
 TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55439/postgres \
