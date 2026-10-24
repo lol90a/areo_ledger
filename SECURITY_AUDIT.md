@@ -58,6 +58,7 @@ and hygiene.
 | [SOL-10](#sol-10) | Low | Token-2022 behaviour undefined | Fixed (fail-closed, documented) |
 | [SOL-11](#sol-11) | Low | Single-step admin handover | Fixed |
 | [SOL-12](#sol-12) | Info | Program id is still the Anchor placeholder | **Open — deployment blocker** |
+| [SOL-13](#sol-13) | Low | `register_merchant` accepted the default pubkey as a seller identity | Fixed |
 | [EVM-01](#evm-01) | Critical | Payouts went to `owner()`; no seller existed | Fixed, tested |
 | [EVM-02](#evm-02) | Critical | Buyer chose `msg.value` | Fixed, tested |
 | [EVM-03](#evm-03) | Medium | Payout followed the *live* owner/treasury, not the order | Fixed, tested |
@@ -66,6 +67,7 @@ and hygiene.
 | [EVM-06](#evm-06) | Medium | Misdirected tokens were permanently stuck | Fixed, tested |
 | [EVM-07](#evm-07) | Medium | Fee-on-transfer tokens under-funded a quoted order | Fixed (behaviour change), tested |
 | [EVM-08](#evm-08) | Low | Contract did not compile against the installed OpenZeppelin | Fixed |
+| [EVM-09](#evm-09) | Info | NatSpec misdescribed where an ERC20 surplus lands, and overstated fee-on-transfer coverage | Fixed (documentation) |
 | [BE-01](#be-01) | Critical | A **reverted** Ethereum transaction was accepted as payment | Fixed, unit-tested |
 | [BE-02](#be-02) | Critical | A **pending** Ethereum transaction looked deeply confirmed | Fixed, unit-tested |
 | [BE-03](#be-03) | High | Every settlement path accepted a 0.5% underpayment | Fixed, unit-tested |
@@ -340,6 +342,33 @@ any deploy: `anchor keys sync`, which derives the id from
 `target/deploy/aeroledger_escrow-keypair.json` and rewrites both files. That keypair
 must never be committed.
 
+### SOL-13
+**`register_merchant` accepted the default pubkey as a seller identity** — Low
+
+Every other authority in the program is checked against `Pubkey::default()` —
+`admin`, `quote_authority`, `treasury`, the `transfer_admin` nominee, and both
+`payout_wallet` sites. `register_merchant` checked its `payout_wallet` argument and
+**not** `merchant_authority`, which arrives as an `UncheckedAccount` that never
+signs (onboarding is deliberately a governance action, and the seller proves key
+control later by confirming their first order).
+
+Nobody holds the private key for the all-zero pubkey, so a merchant registered that
+way can never sign `confirm_order`. Orders created against them would sit `Pending`
+until someone refunded them, or until the buyer's `timeout_refund` opened. That is
+a self-inflicted availability fault by a misconfiguring admin, not a theft path —
+no funds are reachable by an attacker — which is why it is Low rather than Medium.
+
+The EVM twin was already stricter here: `setMerchant` rejects a zero `seller` **and**
+a zero `payoutWallet`. The inconsistency between the two programs is the real
+smell.
+
+*Fix.* The same `require!(... != Pubkey::default(), EscrowError::InvalidAuthority)`
+the other eight sites use, applied to `ctx.accounts.merchant_authority.key()`.
+
+*Evidence.* The program compiles and its 14 unit tests pass. The guard itself is
+inside an Anchor instruction context, so it is **not** unit-tested — it belongs to
+the unexecuted Anchor integration suite (§7). Stated rather than glossed.
+
 ### Solana account sizing (§4.8 of the brief)
 
 `Order::SPACE` was hand-computed in the original. It is now derived with Anchor's
@@ -450,6 +479,38 @@ OpenZeppelin 5.6.1 requires `^0.8.24` and uses `MCOPY`; the Hardhat config pinne
 solc 0.8.20 with no `evmVersion`. *Fix.* solc 0.8.24 with `evmVersion: "cancun"`,
 and a comment recording that Ethereum (Dencun) and BSC (Haber/Bohr) both enable it
 and that any additional target chain must be checked before deploying this bytecode.
+
+### EVM-09
+**NatSpec misdescribed where an ERC20 surplus lands, and overstated fee-on-transfer
+coverage** — Info (documentation only; no behaviour change)
+
+Two inaccurate claims in the contract's own documentation. Both matter because this
+contract's comments are the specification a reviewer reads first.
+
+1. `createOrderERC20` said a rebase-up surplus *"settles to the treasury"*. It does
+   not. `_openOrder` writes `amount: q.amount`, then the caller overwrites it with
+   the measured `received`, while `fee` stays at the signed `q.fee`. Completion pays
+   `sellerAmount = order.amount - order.fee`, so the surplus goes to the **seller**.
+   The Solana twin genuinely does sweep everything above the quoted amount to the
+   treasury (`treasury_amount = vault_balance - seller_amount`), so the two programs
+   differ here and the comment made them look identical.
+
+2. Both the contract-level and function-level comments said *"a fee-on-transfer
+   token reverts"*. True only for a tax on the **inbound** transfer, which is what
+   `_pullTokens` measures. A token that taxes only the **outbound** transfer passes
+   creation, and at payout the seller and treasury receive less than the quote while
+   `escrowBalance` is debited by the full amount.
+
+   That second case was analysed rather than assumed: it **cannot** break the
+   per-asset solvency invariant (`balanceOf(this) >= escrowBalance[asset]`) or reach
+   another order's funds, because the contract's balance falls by at least the
+   debited amount. It underpays the two recipients of that one order. The control is
+   the owner-managed `supportedTokens` allow-list — code does not exclude it, so the
+   comment should not claim code does.
+
+*Fix.* Both comments corrected to say what the code does, including the divergence
+from the Solana implementation and the explicit out-of-scope note. 52 EVM tests
+still pass.
 
 ### EVM — retained properties
 
