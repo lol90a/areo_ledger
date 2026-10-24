@@ -43,3 +43,6 @@ contracts/solana/programs/*/target/
 # The program keypair Anchor generates. Committing it would publish the key that
 # controls program upgrades — see SECURITY_AUDIT.md SOL-12.
 **/target/deploy/*-keypair.json
+
+# Stray npm artifact: the repo root is a Cargo crate, not an npm package.
+/package-lock.json

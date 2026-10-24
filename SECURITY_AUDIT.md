@@ -20,7 +20,7 @@ Everything below was run on this machine, on the code as it now stands.
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend unit | `cargo test --lib` | **46 passed, 0 failed** |
+| Backend unit | `cargo test --lib` | **51 passed, 0 failed** |
 | Backend integration (real Postgres) | `TEST_DATABASE_URL=... cargo test --test integration_postgres -- --ignored --test-threads=1` | **10 passed, 0 failed** |
 | Solana program unit | `cd contracts/solana/programs/aeroledger-escrow && cargo test --lib` | **14 passed, 0 failed** |
 | EVM contracts | `cd contracts/ethereum && npx hardhat test` | **52 passed, 0 failed** |
@@ -78,6 +78,7 @@ and hygiene.
 | [BE-10](#be-10) | Medium | Solana SPL-token payments were mis-measured | Fixed (explicit rejection), unit-tested |
 | [BE-11](#be-11) | Low | Solana JSON-RPC errors read as "transaction not found" | Fixed |
 | [BE-12](#be-12) | Medium | The browser had no authoritative chain id or token contract | Fixed |
+| [BE-13](#be-13) | Low | A stale seeded rate shadowed the dev price floor, so local checkout could never quote | Fixed, unit-tested |
 | [FE-01](#fe-01) | Critical | A 3-second timer displayed "Payment Successful" | Fixed |
 | [FE-02](#fe-02) | High | No wallet connection and no balance check existed at all | Fixed |
 | [FE-03](#fe-03) | High | Submitting a hash auto-created the booking and payment | Fixed |
@@ -696,6 +697,43 @@ the classic route to "right address, wrong chain".
 *Fix.* The endpoint now serves `wallet_kind`, `chain_id` (from `ETHEREUM_CHAIN_ID` /
 `BSC_CHAIN_ID` config), `token_contract` and `decimals`, all derived from the same
 `resolve_chain_token` source of truth the verifier uses.
+
+### BE-13
+**A stale seeded rate shadowed the development price floor** — Low (availability,
+not a money bug)
+
+`MarketPriceOracle` tries its sources in order: memory cache, CoinGecko (live mode
+only), the seeded `crypto_prices` table, then a static development floor. The floor
+exists so local development can always quote.
+
+It was unreachable. `fetch_db` returning *any* row short-circuited the chain, even a
+row whose `last_updated` was days old, and `PaymentQuote::issue` then rejected that
+rate against `MAX_RATE_AGE_SECONDS` (300s). The result on a dev machine whose
+`crypto_prices` rows had aged: every `POST /api/payments/quote` answered 500 with
+`Exchange rate for ETH is 203369s old (limit 300s); refusing to quote`, and checkout
+could not proceed at all.
+
+No customer was ever mispriced by this — the failure is a refusal, not a bad price —
+but it made the whole payment path undemonstrable locally.
+
+*Fix.* The DB branch now consults a single predicate:
+
+```rust
+fn db_rate_is_usable(live: bool, age_seconds: i64) -> bool {
+    live || age_seconds <= MAX_RATE_AGE_SECONDS
+}
+```
+
+Outside live mode a stale row is skipped (with a warning) and the clearly-labelled
+`static-floor-dev` price is used instead. **Live mode is deliberately unchanged:**
+the stale row is still returned so `PaymentQuote::issue` refuses the sale, because a
+real customer must never be priced from a day-old number, and a fabricated floor
+price would be worse than a failed checkout.
+
+*Evidence.* Five unit tests, including
+`live_mode_keeps_a_stale_row_so_the_quote_layer_refuses_the_sale` and
+`dev_mode_skips_a_stale_row_so_local_checkout_falls_back_to_the_floor`, pin both
+halves of that asymmetry.
 
 ### Backend — properties verified and retained
 

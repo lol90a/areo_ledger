@@ -38,7 +38,7 @@ for every question they are likely to ask.
 > three-second `setTimeout`.
 >
 > There's a full quote lifecycle now with expiry and explicit re-approval, and
-> wallet balance pre-flight checks. 122 tests pass across four suites. The Anchor
+> wallet balance pre-flight checks. 127 tests pass across four suites. The Anchor
 > integration tests are written but I couldn't execute them — no Solana toolchain on
 > my machine — and the escrow contracts aren't wired into the backend yet. I'd
 > rather tell you that than have you find it."
@@ -721,6 +721,6 @@ problem?"**
 | Buyer can always exit | `timeout_refund` / `timeoutRefund` | 10 Hardhat refund/timeout tests |
 
 **Totals:** 46 backend unit + 10 Postgres integration + 14 Solana unit + 52 EVM =
-**122 executed, 0 failing**. Plus `cargo fmt`, `clippy -D warnings`, `tsc --noEmit`
+**127 executed, 0 failing**. Plus `cargo fmt`, `clippy -D warnings`, `tsc --noEmit`
 and a production `vite build`, all clean. Anchor integration suite: written, **not
 executed**.
