@@ -14,6 +14,7 @@ AeroLedger is a crypto-native commerce platform for private aviation and luxury 
 > | [`INTERVIEW_PREPARATION.md`](INTERVIEW_PREPARATION.md) | Walkthrough of each change: problem, attack, fix, why it works, evidence |
 > | [`WALKTHROUGH.md`](WALKTHROUGH.md) | How to run it, a rehearsed demo script, and a full-stack tour of the backend, the TypeScript frontend and both contracts |
 > | [`CONTRACTS_EXPLAINED.md`](CONTRACTS_EXPLAINED.md) | Line-by-line explanation of both escrow contracts, the attack table for each defence, and the audit of this pass |
+> | [`contracts/solana/TESTING.md`](contracts/solana/TESTING.md) | How to run both Solana suites, the exact toolchain, and why every dependency is pinned |
 >
 > **Two things to know up front.** The on-chain escrow contracts are built and
 > tested but **not yet wired into the backend** — the live flow is direct payment

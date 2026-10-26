@@ -1,0 +1,20 @@
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+# Profile settings MUST live here, not in programs/aeroledger-escrow/Cargo.toml.
+# Cargo ignores `[profile.*]` in a non-root workspace member and only prints a
+# warning, so a release profile declared in the program crate would silently do
+# nothing once the crate became part of this workspace.
+#
+# `overflow-checks` matters for a program that moves money: release builds
+# normally wrap on arithmetic overflow. Combined with the explicit
+# checked_add/checked_sub calls in the program, this makes an overflow abort the
+# transaction instead of producing a wrong balance.
+[profile.release]
+overflow-checks = true
+
+# Anchor's own recommended release settings for on-chain programs: LTO and a
+# single codegen unit keep the SBF binary small enough to deploy cheaply.
+lto = "fat"
+codegen-units = 1

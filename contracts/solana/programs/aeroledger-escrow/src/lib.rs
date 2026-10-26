@@ -70,10 +70,12 @@ pub use quote::{quote_message, verify_quote_signature_data, QuoteCommitment, Quo
 
 // SECURITY / DEPLOYMENT NOTE:
 // The program id below is the Anchor template placeholder. A REAL program keypair
-// MUST be generated and this `declare_id!` updated (run `anchor keys sync`, which
-// derives the id from `target/deploy/aeroledger_escrow-keypair.json`) BEFORE any
-// deploy to localnet/devnet/mainnet. The same id must match every entry in
-// Anchor.toml. Deploying with this placeholder will fail id/authority checks.
+// MUST be generated and this `declare_id!` updated to match
+// `target/deploy/aeroledger_escrow-keypair.json` BEFORE any deploy to
+// localnet/devnet/mainnet. The same id must match every entry in Anchor.toml.
+// Use the sed one-liner in Anchor.toml, not `anchor keys sync`, which updates
+// only one of the three [programs.*] entries per run (see TESTING.md).
+// Deploying with this placeholder will fail id/authority checks.
 declare_id!("Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j");
 
 /// Maximum accepted length (in bytes) of an `order_id` string.
@@ -845,7 +847,7 @@ pub struct UpdateMerchant<'info> {
 #[instruction(order_id: String)]
 pub struct CreateOrder<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
 
     /// Proves the mint is on the governance allow-list, and ties the PDA to it.
     #[account(
@@ -853,14 +855,14 @@ pub struct CreateOrder<'info> {
         bump = supported_mint.bump,
         constraint = supported_mint.mint == mint.key() @ EscrowError::UnsupportedMint
     )]
-    pub supported_mint: Account<'info, SupportedMint>,
+    pub supported_mint: Box<Account<'info, SupportedMint>>,
 
     /// The seller this order is with. `active` is enforced in the handler.
     #[account(
         seeds = [b"merchant", merchant.authority.as_ref()],
         bump = merchant.bump
     )]
-    pub merchant: Account<'info, Merchant>,
+    pub merchant: Box<Account<'info, Merchant>>,
 
     #[account(
         init,
@@ -869,12 +871,12 @@ pub struct CreateOrder<'info> {
         seeds = [b"order", keccak::hash(order_id.as_bytes()).0.as_ref()],
         bump
     )]
-    pub order: Account<'info, Order>,
+    pub order: Box<Account<'info, Order>>,
 
     #[account(mut)]
     pub buyer: Signer<'info>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
 
     /// Buyer's source token account: must be theirs and hold the order's mint.
     #[account(
@@ -882,7 +884,7 @@ pub struct CreateOrder<'info> {
         constraint = buyer_token_account.owner == buyer.key() @ EscrowError::InvalidTokenAccountOwner,
         constraint = buyer_token_account.mint == mint.key() @ EscrowError::InvalidMint
     )]
-    pub buyer_token_account: Account<'info, TokenAccount>,
+    pub buyer_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Escrow vault: the associated token account of the order PDA for `mint`.
     /// `init` guarantees a fresh, program-controlled vault with the right authority
@@ -893,7 +895,7 @@ pub struct CreateOrder<'info> {
         associated_token::mint = mint,
         associated_token::authority = order
     )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
+    pub escrow_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Validated at creation time so an order can never be funded into a state where
     /// the seller has no place to be paid. Read-only here.
@@ -901,7 +903,7 @@ pub struct CreateOrder<'info> {
         associated_token::mint = mint,
         associated_token::authority = payout_wallet
     )]
-    pub seller_token_account: Account<'info, TokenAccount>,
+    pub seller_token_account: Box<Account<'info, TokenAccount>>,
 
     /// CHECK: constrained to equal `merchant.payout_wallet`, and only used as the
     /// ATA authority for `seller_token_account`.
@@ -912,7 +914,7 @@ pub struct CreateOrder<'info> {
         associated_token::mint = mint,
         associated_token::authority = treasury
     )]
-    pub treasury_token_account: Account<'info, TokenAccount>,
+    pub treasury_token_account: Box<Account<'info, TokenAccount>>,
 
     /// CHECK: constrained to equal `config.treasury`.
     #[account(constraint = treasury.key() == config.treasury @ EscrowError::InvalidPayoutDestination)]

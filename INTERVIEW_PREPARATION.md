@@ -588,14 +588,18 @@ verification mode, startup migrations, or a localhost CORS origin.
 
 **The most important slide in your deck.**
 
-1. **The Anchor integration tests have not been run.** The Anchor CLI and Solana
-   toolchain aren't installed on my machine. The suite is written — ~30 adversarial
-   cases covering quote forgery, account substitution, PDA seed mismatch,
-   authorisation, state-machine violations, double completion, double refund,
-   timeouts, pause. What *is* executed for Solana: 14 unit tests covering the whole
-   quote-attestation parser and the account sizing. The constraints themselves are
-   type-checked but their runtime behaviour is unproven; the equivalent business
-   rules are executed on the EVM side, which is the closest evidence I have.
+1. **Neither contract has been deployed to any cluster.** The Anchor suite does
+   now run — 38 cases against a local `solana-test-validator` — covering quote
+   forgery, account substitution, PDA seed mismatch, authorisation, state-machine
+   violations, double completion, double refund, timeouts and pause. What a local
+   validator does not prove: behaviour under a real fee market, compute limits on
+   a congested cluster, or anything about a mainnet deploy. The program id is
+   still the placeholder, deliberately.
+
+   Worth saying out loud: running that suite is what found SOL-14. `create_order`
+   overflowed the 4KB BPF stack frame, so it could never have executed on-chain —
+   and every host-target check stayed green the whole time. A written test is not
+   a passing test.
 
 2. **The escrow contracts are not wired into the backend.** This is the honest
    headline. The live flow is direct payment with on-chain verification: quote →
@@ -720,7 +724,6 @@ problem?"**
 | Idempotent settlement | `pg_settlement_repository.rs` | `confirming_the_same_payment_twice_settles_once` |
 | Buyer can always exit | `timeout_refund` / `timeoutRefund` | 10 Hardhat refund/timeout tests |
 
-**Totals:** 46 backend unit + 10 Postgres integration + 14 Solana unit + 52 EVM =
-**127 executed, 0 failing**. Plus `cargo fmt`, `clippy -D warnings`, `tsc --noEmit`
-and a production `vite build`, all clean. Anchor integration suite: written, **not
-executed**.
+**Totals:** 51 backend unit + 10 Postgres integration + 14 Solana unit + 38
+Anchor integration + 52 EVM = **165 executed, 0 failing**. Plus `cargo fmt`,
+`clippy -D warnings`, `tsc --noEmit` and a production `vite build`, all clean.

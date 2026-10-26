@@ -2,11 +2,16 @@
 # The program id below is the Anchor template placeholder
 # (Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j). Before ANY deploy a real program
 # keypair MUST be generated and every id below (plus `declare_id!` in
-# programs/aeroledger-escrow/src/lib.rs) updated to match it. Run:
-#     anchor keys sync
-# which derives the id from target/deploy/aeroledger_escrow-keypair.json and
-# rewrites both this file and lib.rs consistently. Deploying with this
-# placeholder id will fail.
+# programs/aeroledger-escrow/src/lib.rs) updated to match it:
+#     PID=$(solana-keygen pubkey target/deploy/aeroledger_escrow-keypair.json)
+#     sed -i "s/Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j/$PID/g" Anchor.toml
+#     sed -i "s/Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j/$PID/g" programs/aeroledger-escrow/src/lib.rs
+#
+# Do NOT use `anchor keys sync` here. Three [programs.*] sections declare the
+# same program and it updates only one of them per run, which leaves localnet on
+# the placeholder while declare_id! has moved -- the deploy then fails with
+# DeclaredProgramIdMismatch (4100). It also strips every comment in this file.
+# See TESTING.md. Deploying with the placeholder id will fail.
 
 [toolchain]
 
@@ -29,6 +34,20 @@ url = "https://api.apr.dev"
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
+
+[test]
+# `initialize` is gated on the caller being the program's upgrade authority,
+# which it reads from the ProgramData account. Anchor's default test deploy
+# preloads the program into the validator's genesis, where it is NOT
+# upgradeable and has no ProgramData account at all — so initialize could never
+# succeed. This deploys through the upgradeable loader instead, with the local
+# test wallet as upgrade authority.
+upgradeable = true
+
+# The default is 5000ms. A cold validator in a container takes ~7s to bind its
+# RPC port, so the default loses the race and the suite aborts with "Test
+# validator does not look started".
+startup_wait = 30000
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
