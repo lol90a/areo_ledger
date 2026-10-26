@@ -13,47 +13,68 @@ const ERC20_TRANSFER_TOPIC: &str =
 pub struct EvmGateway {
     client: Client,
     api_key: String,
-    base_url: String,
+    /// EIP-155 chain id. Selects the network on the V2 endpoint, so this single
+    /// value decides both which chain is verified and which chain the frontend
+    /// is told to connect to.
+    chain_id: u64,
     wallets: HashMap<String, String>,
     min_confirmations: u32,
 }
 
+/// Etherscan's multichain endpoint.
+///
+/// The V1 per-network hosts this gateway used to call (`api.etherscan.io/api`,
+/// `api.bscscan.com/api`, `api-sepolia.etherscan.io/api`) are retired. They now
+/// answer every request with HTTP 200 and
+/// `{"status":"0","message":"NOTOK","result":"You are using a deprecated V1
+/// endpoint..."}`, so EVM verification could not succeed on any network.
+///
+/// V2 serves every chain from one host and one API key, selected by `chainid`.
+/// That is also why `chain_id` is now the only thing distinguishing an Ethereum
+/// gateway from a BSC one: the chain the operator configures is, by
+/// construction, the chain that gets verified. Previously the two were set in
+/// different places and nothing compared them.
+const ETHERSCAN_V2_BASE: &str = "https://api.etherscan.io/v2/api";
+
 impl EvmGateway {
-    pub fn new_ethereum(api_key: String, wallets: HashMap<String, String>) -> Self {
-        Self::build(
-            api_key,
-            "https://api.etherscan.io/api".to_string(),
-            wallets,
-            12,
-        )
+    /// Ethereum, on whatever network `chain_id` names (1, 11155111, ...).
+    pub fn new_ethereum(api_key: String, chain_id: u64, wallets: HashMap<String, String>) -> Self {
+        Self::build(api_key, chain_id, wallets, 12)
     }
 
-    pub fn new_bsc(api_key: String, wallets: HashMap<String, String>) -> Self {
-        Self::build(
-            api_key,
-            "https://api.bscscan.com/api".to_string(),
-            wallets,
-            15,
-        )
+    /// BSC. Served by the same host and key as Ethereum under V2, so a separate
+    /// BscScan key is no longer required.
+    pub fn new_bsc(api_key: String, chain_id: u64, wallets: HashMap<String, String>) -> Self {
+        Self::build(api_key, chain_id, wallets, 15)
     }
 
     fn build(
         api_key: String,
-        base_url: String,
+        chain_id: u64,
         wallets: HashMap<String, String>,
         min_confirmations: u32,
     ) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .expect("Failed to build HTTP client");
+        let client = crate::infrastructure::http::client(Duration::from_secs(10));
         Self {
             client,
             api_key,
-            base_url,
+            chain_id,
             wallets,
             min_confirmations,
         }
+    }
+
+    /// Compose an Etherscan V2 URL for `params` (everything between `chainid`
+    /// and the key, e.g. `module=proxy&action=eth_blockNumber`).
+    ///
+    /// Every request goes through here so the chain id and key cannot be
+    /// forgotten at one call site -- which is how the old code ended up with
+    /// four hand-built URLs that all hard-coded mainnet.
+    fn endpoint(&self, params: &str) -> String {
+        format!(
+            "{}?chainid={}&{}&apikey={}",
+            ETHERSCAN_V2_BASE, self.chain_id, params, self.api_key
+        )
     }
 
     async fn fetch_json(&self, url: &str) -> Result<serde_json::Value, InfraError> {
@@ -77,19 +98,69 @@ impl EvmGateway {
             )));
         }
 
-        serde_json::from_str(&body).map_err(|_| {
+        let json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
             InfraError::Blockchain(format!(
                 "Provider returned a non-JSON response: {}",
                 body.chars().take(200).collect::<String>()
             ))
-        })
+        })?;
+
+        Self::reject_api_error(&json)?;
+        Ok(json)
+    }
+
+    /// Surface an Etherscan API-level failure as an error.
+    ///
+    /// Etherscan answers a rejected request with **HTTP 200** and an error in
+    /// the body, so the status-code check above never sees it. Nothing used to
+    /// inspect the envelope: a deprecated endpoint, an invalid key or a rate
+    /// limit all flowed on as a normal response, and `result` -- a human
+    /// sentence like "You are using a deprecated V1 endpoint" -- was handed to
+    /// a hex parser. The operator saw "invalid digit found in string" while the
+    /// real cause was that the payment provider was refusing every call.
+    ///
+    /// Failing loudly here matters beyond diagnostics: several callers use
+    /// `unwrap_or` defaults, so an unnoticed API error could be read as "no
+    /// receipt" or "zero value" rather than "we do not know".
+    fn reject_api_error(json: &serde_json::Value) -> Result<(), InfraError> {
+        // JSON-RPC proxy errors: {"jsonrpc":"2.0","error":{"message":...}}
+        if let Some(message) = json
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+        {
+            return Err(InfraError::Blockchain(format!(
+                "Explorer RPC error: {}",
+                message
+            )));
+        }
+
+        // Module errors: {"status":"0","message":"NOTOK","result":"<reason>"}.
+        // `status` is "0" only on failure; a successful proxy call omits it.
+        let failed = json.get("status").and_then(|s| s.as_str()) == Some("0");
+        if failed {
+            let reason = json
+                .get("result")
+                .and_then(|r| r.as_str())
+                .or_else(|| json.get("message").and_then(|m| m.as_str()))
+                .unwrap_or("no reason given");
+            // "No transactions found" is a legitimate empty result, not a fault.
+            if !reason
+                .to_ascii_lowercase()
+                .contains("no transactions found")
+            {
+                return Err(InfraError::Blockchain(format!(
+                    "Explorer API rejected the request: {}",
+                    reason
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     async fn current_block(&self) -> Result<u64, InfraError> {
-        let url = format!(
-            "{}?module=proxy&action=eth_blockNumber&apikey={}",
-            self.base_url, self.api_key
-        );
+        let url = self.endpoint("module=proxy&action=eth_blockNumber");
         let data = self.fetch_json(&url).await?;
         let hex = data["result"].as_str().unwrap_or("0x0");
         u64::from_str_radix(hex.trim_start_matches("0x"), 16)
@@ -137,10 +208,10 @@ impl EvmGateway {
     /// only proof that it did not revert. Both facts are required before any transfer
     /// the transaction claims to make can be believed.
     async fn receipt_status(&self, tx_hash: &str) -> Result<(u64, bool), DomainError> {
-        let url = format!(
-            "{}?module=proxy&action=eth_getTransactionReceipt&txhash={}&apikey={}",
-            self.base_url, tx_hash, self.api_key
-        );
+        let url = self.endpoint(&format!(
+            "module=proxy&action=eth_getTransactionReceipt&txhash={}",
+            tx_hash
+        ));
         let data = self.fetch_json(&url).await.map_err(DomainError::from)?;
         let result = data.get("result").filter(|r| !r.is_null()).ok_or_else(|| {
             InfraError::Blockchain(format!(
@@ -169,10 +240,10 @@ impl EvmGateway {
         // implementation treated both as a successful payment.
         let (tx_block, succeeded) = self.receipt_status(&req.tx_hash).await?;
 
-        let url = format!(
-            "{}?module=proxy&action=eth_getTransactionByHash&txhash={}&apikey={}",
-            self.base_url, req.tx_hash, self.api_key
-        );
+        let url = self.endpoint(&format!(
+            "module=proxy&action=eth_getTransactionByHash&txhash={}",
+            req.tx_hash
+        ));
         let data = self.fetch_json(&url).await.map_err(DomainError::from)?;
         let result = data.get("result").filter(|r| !r.is_null()).ok_or_else(|| {
             InfraError::Blockchain(format!("Transaction not found: {}", req.tx_hash))
@@ -206,10 +277,10 @@ impl EvmGateway {
         req: &VerifyRequest,
         token_contract: &str,
     ) -> Result<TxVerification, DomainError> {
-        let url = format!(
-            "{}?module=proxy&action=eth_getTransactionReceipt&txhash={}&apikey={}",
-            self.base_url, req.tx_hash, self.api_key
-        );
+        let url = self.endpoint(&format!(
+            "module=proxy&action=eth_getTransactionReceipt&txhash={}",
+            req.tx_hash
+        ));
         let data = self.fetch_json(&url).await.map_err(DomainError::from)?;
         let result = data.get("result").filter(|r| !r.is_null()).ok_or_else(|| {
             InfraError::Blockchain(format!(
@@ -290,11 +361,11 @@ impl EvmGateway {
         // issued, so there is no rounding slack left to concede.
         let amount_ok = base_units >= req.expected_base_units;
         let receiver_ok = to_address.eq_ignore_ascii_case(&req.expected_to);
+        // Deep enough and successful: whatever is wrong now is wrong for good.
+        let observed = succeeded && confirmations >= self.min_confirmations;
         TxVerification {
-            verified: succeeded
-                && amount_ok
-                && receiver_ok
-                && confirmations >= self.min_confirmations,
+            verified: observed && amount_ok && receiver_ok,
+            observed,
             base_units,
             confirmations,
             from_address,
@@ -331,6 +402,97 @@ impl BlockchainGateway for EvmGateway {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gateway_on(chain_id: u64) -> EvmGateway {
+        EvmGateway::new_ethereum("TESTKEY".to_string(), chain_id, HashMap::new())
+    }
+
+    #[test]
+    fn every_request_carries_the_configured_chain_id() {
+        // The whole point of the V2 migration: the chain the operator sets is
+        // the chain that gets verified, with no second place to disagree.
+        let url = gateway_on(11155111).endpoint("module=proxy&action=eth_blockNumber");
+        assert!(
+            url.starts_with("https://api.etherscan.io/v2/api?"),
+            "{}",
+            url
+        );
+        assert!(url.contains("chainid=11155111"), "{}", url);
+        assert!(url.contains("apikey=TESTKEY"), "{}", url);
+    }
+
+    #[test]
+    fn mainnet_and_testnet_gateways_differ_only_by_chain_id() {
+        let mainnet = gateway_on(1).endpoint("module=proxy&action=eth_blockNumber");
+        let sepolia = gateway_on(11155111).endpoint("module=proxy&action=eth_blockNumber");
+        assert_ne!(mainnet, sepolia);
+        assert_eq!(mainnet.replace("chainid=1&", "chainid=11155111&"), sepolia);
+    }
+
+    #[test]
+    fn a_deprecated_endpoint_response_is_an_error_not_a_parse_failure() {
+        // Exactly what the retired V1 hosts return, with HTTP 200. This used to
+        // flow through as a normal response and die later in a hex parser.
+        let body = serde_json::json!({
+            "status": "0",
+            "message": "NOTOK",
+            "result": "You are using a deprecated V1 endpoint, switch to Etherscan API V2",
+        });
+        let err = EvmGateway::reject_api_error(&body).unwrap_err();
+        assert!(format!("{}", err).contains("deprecated"), "{}", err);
+    }
+
+    #[test]
+    fn an_invalid_api_key_is_an_error() {
+        let body = serde_json::json!({
+            "status": "0",
+            "message": "NOTOK",
+            "result": "Invalid API Key (#err2)",
+        });
+        assert!(EvmGateway::reject_api_error(&body).is_err());
+    }
+
+    #[test]
+    fn a_rate_limit_is_an_error_rather_than_a_silent_zero() {
+        // Critical: callers fall back to `unwrap_or` defaults, so a rate limit
+        // read as a normal response would look like "not mined" or "no value".
+        let body = serde_json::json!({
+            "status": "0",
+            "message": "NOTOK",
+            "result": "Max rate limit reached",
+        });
+        assert!(EvmGateway::reject_api_error(&body).is_err());
+    }
+
+    #[test]
+    fn a_json_rpc_error_object_is_an_error() {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": { "code": -32000, "message": "header not found" },
+        });
+        let err = EvmGateway::reject_api_error(&body).unwrap_err();
+        assert!(format!("{}", err).contains("header not found"), "{}", err);
+    }
+
+    #[test]
+    fn a_successful_proxy_response_passes_through() {
+        let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": "0x10d4f" });
+        assert!(EvmGateway::reject_api_error(&body).is_ok());
+    }
+
+    #[test]
+    fn an_empty_result_set_is_not_treated_as_a_failure() {
+        // Etherscan reports "no rows" with the same status:"0" shape as a real
+        // error. Rejecting it would turn a legitimately empty answer into an
+        // outage.
+        let body = serde_json::json!({
+            "status": "0",
+            "message": "No transactions found",
+            "result": [],
+        });
+        assert!(EvmGateway::reject_api_error(&body).is_ok());
+    }
 
     #[test]
     fn extracts_address_from_padded_topic() {
@@ -376,7 +538,7 @@ mod tests {
     }
 
     fn gateway() -> EvmGateway {
-        EvmGateway::new_ethereum("key".to_string(), HashMap::new())
+        gateway_on(1)
     }
 
     #[test]

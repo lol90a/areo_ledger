@@ -62,6 +62,9 @@ impl BlockchainGateway for TestGateway {
         request: &VerifyRequest,
     ) -> Result<TxVerification, DomainError> {
         Ok(TxVerification {
+            // This stub only ever reports settled transactions, so what it sees
+            // is final by construction.
+            observed: true,
             verified: true,
             base_units: request.expected_base_units,
             confirmations: 99,

@@ -37,6 +37,16 @@ export type PaymentRoute = {
   /** ERC-20 contract for non-native EVM tokens, supplied by the backend. */
   tokenContract: string | null;
   decimals: number;
+  /**
+   * RPC endpoint for chains with no chain id, supplied by the backend.
+   *
+   * Solana has no EIP-155 equivalent, so this used to come from the browser's
+   * own `VITE_SOLANA_RPC_URL` while the backend verified against whatever
+   * `SOLANA_RPC_URL` it had. The two silently disagreed -- balances read on
+   * devnet, verification on mainnet -- and a payment in that state can never
+   * confirm. The server owns the network for the same reason it owns chainId.
+   */
+  rpcUrl: string | null;
 };
 
 export type ConnectedWallet = {
@@ -92,9 +102,6 @@ declare global {
     solana?: SolanaProvider;
   }
 }
-
-const SOLANA_RPC_URL =
-  (import.meta.env.VITE_SOLANA_RPC_URL as string | undefined) ?? "https://api.devnet.solana.com";
 
 /**
  * Lamports kept back for the signature fee and, where an account has to be
@@ -235,8 +242,8 @@ async function solanaConnect(): Promise<ConnectedWallet> {
   return { kind: "solana", address: publicKey.toString(), chainId: null };
 }
 
-async function solanaRpc<T>(method: string, params: unknown[]): Promise<T> {
-  const response = await fetch(SOLANA_RPC_URL, {
+async function solanaRpc<T>(endpoint: string, method: string, params: unknown[]): Promise<T> {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -248,8 +255,8 @@ async function solanaRpc<T>(method: string, params: unknown[]): Promise<T> {
   return json.result;
 }
 
-async function solanaLamports(address: string): Promise<bigint> {
-  const result = await solanaRpc<{ value: number }>("getBalance", [
+async function solanaLamports(endpoint: string, address: string): Promise<bigint> {
+  const result = await solanaRpc<{ value: number }>(endpoint, "getBalance", [
     address,
     { commitment: "confirmed" },
   ]);
@@ -326,7 +333,14 @@ export async function checkBalance(
     }
 
     // Solana: native SOL only (the backend does not settle SPL tokens on Solana).
-    const lamports = await solanaLamports(wallet.address);
+    if (!route.rpcUrl) {
+      return {
+        state: "error",
+        reason:
+          "The server did not supply a Solana RPC endpoint for this route, so the balance cannot be read on the same cluster the payment will be verified on.",
+      };
+    }
+    const lamports = await solanaLamports(route.rpcUrl, wallet.address);
     const needed = requiredBaseUnits + SOLANA_FEE_BUFFER_LAMPORTS;
     const sufficient = lamports >= needed;
 

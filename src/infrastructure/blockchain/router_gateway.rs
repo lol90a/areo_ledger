@@ -58,6 +58,7 @@ impl BlockchainGateway for MultiChainGateway {
         if self.verification_mode == "manual" {
             return Ok(TxVerification {
                 verified: true,
+                observed: true,
                 base_units: request.expected_base_units,
                 confirmations: 99,
                 from_address: "manual-verification".to_string(),

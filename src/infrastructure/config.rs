@@ -1,5 +1,10 @@
 use std::env;
 
+use crate::domain::value_objects::{
+    bitcoin_network, check_realm_consistency, evm_network, solana_network, Chain, ConfiguredChain,
+    Network,
+};
+
 #[derive(Clone)]
 pub struct AppConfig {
     pub database_url: String,
@@ -95,6 +100,56 @@ impl AppConfig {
         }
     }
 
+    /// The chains this deployment actually advertises, with the network each is
+    /// pointed at.
+    ///
+    /// Only chains with a wallet address configured are included: a route with
+    /// no wallet is never offered to a client, so holding a half-finished
+    /// deployment to a network it does not serve would be noise.
+    pub fn configured_chains(&self) -> Vec<ConfiguredChain> {
+        let mut chains = Vec::new();
+        if !self.wallet_btc.trim().is_empty() {
+            chains.push(ConfiguredChain {
+                chain: Chain::Bitcoin,
+                network: bitcoin_network(&self.bitcoin_api_base),
+            });
+        }
+        // ETH, USDT and USDC all settle on Ethereum, so one entry covers them.
+        if !self.wallet_eth.trim().is_empty()
+            || !self.wallet_usdt.trim().is_empty()
+            || !self.wallet_usdc.trim().is_empty()
+        {
+            chains.push(ConfiguredChain {
+                chain: Chain::Ethereum,
+                network: Some(evm_network(self.ethereum_chain_id)),
+            });
+        }
+        if !self.wallet_bnb.trim().is_empty() {
+            chains.push(ConfiguredChain {
+                chain: Chain::Bsc,
+                network: Some(evm_network(self.bsc_chain_id)),
+            });
+        }
+        if !self.wallet_sol.trim().is_empty() {
+            chains.push(ConfiguredChain {
+                chain: Chain::Solana,
+                network: solana_network(&self.solana_rpc_url),
+            });
+        }
+        chains
+    }
+
+    /// The network a given chain is configured against, for the API to report to
+    /// clients so the wallet and the verifier cannot disagree.
+    pub fn network_for(&self, chain: Chain) -> Option<Network> {
+        match chain {
+            Chain::Bitcoin => bitcoin_network(&self.bitcoin_api_base),
+            Chain::Ethereum => Some(evm_network(self.ethereum_chain_id)),
+            Chain::Bsc => Some(evm_network(self.bsc_chain_id)),
+            Chain::Solana => solana_network(&self.solana_rpc_url),
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.database_url.trim().is_empty() {
             return Err("DATABASE_URL must be set".to_string());
@@ -124,6 +179,10 @@ impl AppConfig {
                     .to_string(),
             );
         }
+        // Every enabled chain must be on the same network. Each setting is
+        // individually plausible, so only comparing them catches a deployment
+        // that verifies on mainnet while the wallet is told to use devnet.
+        check_realm_consistency(&self.configured_chains())?;
 
         if self.app_env == "production" {
             if self.run_migrations {
@@ -275,6 +334,48 @@ mod tests {
     #[test]
     fn accepts_a_sound_dev_config() {
         assert!(dev_config().validate().is_ok());
+    }
+
+    /// The exact defect this repository shipped with: Solana pointed at devnet
+    /// while Ethereum was on mainnet. Each value looked fine on its own, and a
+    /// payment in that state can never confirm.
+    #[test]
+    fn rejects_a_deployment_that_mixes_mainnet_and_a_test_network() {
+        let mut cfg = dev_config();
+        cfg.wallet_sol = "SoLWa11etAddressForTesting111111111111111111".to_string();
+        cfg.solana_rpc_url = "https://api.devnet.solana.com".to_string();
+        cfg.wallet_eth = "0x1111111111111111111111111111111111111111".to_string();
+        cfg.ethereum_chain_id = 1;
+
+        let err = cfg.validate().unwrap_err();
+        assert!(err.contains("Solana"), "{}", err);
+        assert!(err.contains("Ethereum"), "{}", err);
+    }
+
+    #[test]
+    fn accepts_an_all_testnet_deployment() {
+        let mut cfg = dev_config();
+        cfg.wallet_sol = "SoLWa11etAddressForTesting111111111111111111".to_string();
+        cfg.solana_rpc_url = "https://api.devnet.solana.com".to_string();
+        cfg.wallet_eth = "0x1111111111111111111111111111111111111111".to_string();
+        cfg.ethereum_chain_id = 11155111;
+        cfg.wallet_btc = "tb1qtestnetaddress".to_string();
+        cfg.bitcoin_api_base = "https://blockstream.info/testnet/api".to_string();
+
+        assert!(cfg.validate().is_ok(), "{:?}", cfg.validate());
+    }
+
+    /// A chain with no wallet configured is never offered to a client, so it
+    /// must not hold back a deployment for a network it does not serve.
+    #[test]
+    fn ignores_chains_that_have_no_wallet_configured() {
+        let mut cfg = dev_config();
+        cfg.wallet_sol = "SoLWa11etAddressForTesting111111111111111111".to_string();
+        cfg.solana_rpc_url = "https://api.devnet.solana.com".to_string();
+        // Ethereum is on mainnet but has no wallet, so it is not advertised.
+        cfg.ethereum_chain_id = 1;
+
+        assert!(cfg.validate().is_ok(), "{:?}", cfg.validate());
     }
 
     #[test]

@@ -73,6 +73,7 @@ function routeFrom(option: PaymentOption): PaymentRoute {
     chainId: option.chain_id,
     tokenContract: option.token_contract,
     decimals: option.decimals,
+    rpcUrl: option.rpc_url,
   };
 }
 
@@ -558,6 +559,7 @@ export function CheckoutQuotePanel({ token, bookingId, option, onReady, onEnsure
           </p>
           <p className="mt-3 text-xs uppercase tracking-[0.24em] text-slate-500">
             To this address on {option.chain}
+            {option.network ? ` (${option.network})` : ""}
           </p>
           <p className="mt-2 break-all font-mono text-sm text-slate-300">
             {payment?.wallet_address ?? quote?.receiver_address}
@@ -575,9 +577,11 @@ export function CheckoutQuotePanel({ token, bookingId, option, onReady, onEnsure
             Copy address
           </button>
           <p className="mt-4 text-xs leading-5 text-slate-500">
-            Send from the wallet you control, on {option.chain} only. Then submit the
-            transaction id below; the order is confirmed when the backend has verified the
-            transfer on-chain, not before.
+            Send from the wallet you control, on{" "}
+            {option.network ? `${option.chain} ${option.network}` : option.chain} only. The
+            network is the one the backend will verify against, so sending on any other
+            network loses the funds. Then submit the transaction id below; the order is
+            confirmed when the backend has verified the transfer on-chain, not before.
           </p>
         </div>
       )}

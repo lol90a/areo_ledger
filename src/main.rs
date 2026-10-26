@@ -84,8 +84,23 @@ async fn main() -> std::io::Result<()> {
     wallets.insert("SOL".to_string(), config.wallet_sol.clone());
 
     let multichain_gateway = MultiChainGateway::new(
-        EvmGateway::new_ethereum(config.etherscan_api_key.clone(), wallets.clone()),
-        EvmGateway::new_bsc(config.bscscan_api_key.clone(), wallets.clone()),
+        EvmGateway::new_ethereum(
+            config.etherscan_api_key.clone(),
+            config.ethereum_chain_id,
+            wallets.clone(),
+        ),
+        // Etherscan V2 serves every chain from one host and key, so BSC uses the
+        // same credential. BSCSCAN_API_KEY is kept as an optional override for
+        // deployments that still hold a separate key.
+        EvmGateway::new_bsc(
+            if config.bscscan_api_key.trim().is_empty() {
+                config.etherscan_api_key.clone()
+            } else {
+                config.bscscan_api_key.clone()
+            },
+            config.bsc_chain_id,
+            wallets.clone(),
+        ),
         SolanaGateway::new(config.solana_rpc_url.clone(), wallets.clone()),
         BitcoinGateway::new(config.bitcoin_api_base.clone(), config.wallet_btc.clone()),
         wallets,

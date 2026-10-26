@@ -18,6 +18,10 @@ const COMMITMENT: &str = "finalized";
 /// depth, so the number is a flag rather than a depth measurement.
 const FINALIZED_CONFIRMATIONS: u32 = 32;
 
+/// JSON-RPC "invalid params". From `getTransaction` this means the signature we
+/// passed is not a signature at all, i.e. the client sent a malformed hash.
+const INVALID_PARAMS: i64 = -32602;
+
 #[derive(Clone)]
 pub struct SolanaGateway {
     client: Client,
@@ -40,10 +44,7 @@ pub struct SolanaTransferFacts {
 
 impl SolanaGateway {
     pub fn new(rpc_url: String, wallets: HashMap<String, String>) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_else(|_| Client::new());
+        let client = crate::infrastructure::http::client(Duration::from_secs(10));
         Self {
             client,
             rpc_url,
@@ -83,6 +84,16 @@ impl SolanaGateway {
         // A JSON-RPC error body is still HTTP 200; surface it instead of reading
         // `result` as null and calling the transaction "not found".
         if let Some(err) = json.get("error").filter(|e| !e.is_null()) {
+            // -32602 is "invalid params", which for these calls means the
+            // caller handed us something that is not a signature at all. That is
+            // bad input, not a provider fault, and reporting it as an
+            // infrastructure error turned a malformed transaction hash into a
+            // 500 Internal Server Error.
+            if err.get("code").and_then(|c| c.as_i64()) == Some(INVALID_PARAMS) {
+                return Err(InfraError::InvalidRequest(
+                    "That is not a valid Solana transaction signature.".to_string(),
+                ));
+            }
             return Err(InfraError::Blockchain(format!(
                 "RPC error: {}",
                 err.to_string().chars().take(200).collect::<String>()
@@ -195,6 +206,8 @@ impl BlockchainGateway for SolanaGateway {
             // as unverified with zero confirmations so the caller keeps retrying.
             return Ok(TxVerification {
                 verified: false,
+                // Nothing seen on-chain yet, so this really is "not yet".
+                observed: false,
                 base_units: 0,
                 confirmations: 0,
                 from_address: String::new(),
@@ -208,6 +221,9 @@ impl BlockchainGateway for SolanaGateway {
 
         Ok(TxVerification {
             verified: facts.succeeded && facts.receiver_matched && amount_ok,
+            // The RPC returned it at `finalized` and it executed, so the
+            // recipient and amount below are final facts, not a timing artefact.
+            observed: facts.succeeded,
             base_units: facts.lamports_credited,
             confirmations: if facts.succeeded {
                 FINALIZED_CONFIRMATIONS

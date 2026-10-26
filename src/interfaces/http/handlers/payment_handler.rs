@@ -85,6 +85,16 @@ struct PaymentOptionResponse {
     token_contract: Option<String>,
     /// Decimals of the token's smallest unit.
     decimals: u8,
+    /// Canonical network name this route settles on ("devnet", "sepolia",
+    /// "mainnet-beta", ...), or null when the endpoint does not name one.
+    network: Option<String>,
+    /// RPC endpoint for chains whose network is not identified by a chain id.
+    ///
+    /// Solana has no EIP-155 equivalent, so without this the browser had to
+    /// supply its own endpoint and silently disagreed with the verifier about
+    /// which cluster the payment was on. Serving it here puts Solana under the
+    /// same rule as `chain_id`: the server decides the network, not the client.
+    rpc_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -141,6 +151,10 @@ fn build_payment_options(config: &AppConfig) -> Vec<PaymentOptionResponse> {
             chain_id,
             token_contract: token.erc20_contract().map(|s| s.to_string()),
             decimals: token.decimals(),
+            network: config.network_for(chain).map(|n| n.name),
+            // Only Solana needs this; EVM clients key off chain_id and Bitcoin
+            // is settled manually.
+            rpc_url: (chain == Chain::Solana).then(|| config.solana_rpc_url.clone()),
         })
     })
     .collect()

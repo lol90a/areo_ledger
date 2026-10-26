@@ -15,6 +15,14 @@ export type PaymentOption = {
   /** ERC-20 contract for non-native EVM tokens. Server-supplied. */
   token_contract: string | null;
   decimals: number;
+  /** Canonical network this route settles on, e.g. "devnet", "sepolia". */
+  network: string | null;
+  /**
+   * RPC endpoint for chains with no chain id. Server-supplied for the same
+   * reason as `chain_id`: the browser reading balances on a different cluster
+   * than the backend verifies on is a payment that can never confirm.
+   */
+  rpc_url: string | null;
 };
 
 export type CreateBookingResponse = {

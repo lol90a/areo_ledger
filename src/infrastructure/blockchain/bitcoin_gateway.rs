@@ -1,6 +1,7 @@
 use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification, VerifyRequest};
 use crate::shared::errors::{DomainError, InfraError};
 use reqwest::Client;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct BitcoinGateway {
@@ -13,7 +14,7 @@ pub struct BitcoinGateway {
 impl BitcoinGateway {
     pub fn new(base_url: String, wallet_btc: String) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::infrastructure::http::client(Duration::from_secs(10)),
             base_url: base_url.trim_end_matches('/').to_string(),
             wallet_btc,
             min_confirmations: 3,
@@ -114,10 +115,13 @@ impl BlockchainGateway for BitcoinGateway {
         // Exact-or-more: the quote was rounded up to satoshi precision when issued,
         // so there is no rounding slack to concede.
         let amount_ok = matched_sats >= req.expected_base_units;
-        let verified = matched_sats > 0 && amount_ok && confirmations >= self.min_confirmations;
+        // Buried deep enough to be settled; anything wrong at this point stays wrong.
+        let observed = confirmations >= self.min_confirmations;
+        let verified = observed && matched_sats > 0 && amount_ok;
 
         Ok(TxVerification {
             verified,
+            observed,
             base_units: matched_sats,
             confirmations,
             from_address: tx
