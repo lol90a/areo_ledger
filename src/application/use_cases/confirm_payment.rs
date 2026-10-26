@@ -7,6 +7,26 @@ use crate::domain::value_objects::blockchain::TxHash;
 use crate::domain::value_objects::CryptoToken;
 use crate::shared::errors::DomainError;
 
+/// Render a base-unit amount as a human token figure, e.g. 97486785679 lamports
+/// at 9 decimals becomes "97.486785679".
+///
+/// Integer-only: the amounts involved exceed f64's exact range, and a payment
+/// message that misreports what someone sent is worse than no message.
+fn format_base_units(units: u128, decimals: u8) -> String {
+    let scale = 10u128.pow(decimals as u32);
+    let whole = units / scale;
+    if decimals == 0 {
+        return whole.to_string();
+    }
+    let frac = format!("{:0width$}", units % scale, width = decimals as usize);
+    let frac = frac.trim_end_matches('0');
+    if frac.is_empty() {
+        whole.to_string()
+    } else {
+        format!("{}.{}", whole, frac)
+    }
+}
+
 pub struct ConfirmPayment<PR, SR, BG>
 where
     PR: PaymentRepository,
@@ -85,17 +105,48 @@ where
         let amount_ok = verification.base_units >= expected_base_units;
 
         if !verification.verified || !receiver_ok || !amount_ok {
-            // Record the submitted hash but keep the payment pending for retry/reconciliation.
-            let mut pending = payment;
+            // Record the submitted hash but keep the payment pending: the buyer may
+            // still send a correct transaction, which arrives under a different hash.
+            let mut pending = payment.clone();
             if !verification.from_address.trim().is_empty() {
                 pending.sender_address = Some(verification.from_address.clone());
             }
             pending.tx_hash = Some(tx_hash.clone());
             self.payment_repo.update(&pending).await?;
-            return Err(DomainError::ValidationError(format!(
-                "Transaction not verified yet (confirmations: {}). It will settle automatically once valid.",
-                verification.confirmations
-            )));
+
+            // Say which of the three it is. These used to share one message --
+            // "not verified yet ... it will settle automatically once valid" --
+            // which told someone who had underpaid, or paid the wrong address
+            // entirely, to sit and wait for a settlement that could never come.
+            let message = if !verification.observed {
+                format!(
+                    "Transaction not confirmed yet (confirmations: {}). \
+                     It will settle automatically once it is final on-chain.",
+                    verification.confirmations
+                )
+            } else if !receiver_ok {
+                format!(
+                    "This transaction paid {}, but this order must be paid to {}. \
+                     Funds sent elsewhere cannot be recovered by this platform, and \
+                     this transaction will never settle the order.",
+                    if verification.to_address.trim().is_empty() {
+                        "a different address"
+                    } else {
+                        verification.to_address.trim()
+                    },
+                    payment.receiver_address
+                )
+            } else {
+                format!(
+                    "This transaction paid {} {}, short of the {} this order requires, \
+                     so it will never settle it. Send the full amount in a single \
+                     transaction.",
+                    format_base_units(verification.base_units, decimals),
+                    token.as_str(),
+                    format_base_units(expected_base_units, decimals),
+                )
+            };
+            return Err(DomainError::ValidationError(message));
         }
 
         let sender = (!verification.from_address.trim().is_empty())
@@ -204,6 +255,22 @@ mod tests {
     struct Gateway {
         verified: bool,
         base_units: u128,
+        /// Defaults to matching `verified`; set independently to model a
+        /// transaction that IS final but paid the wrong amount or address.
+        observed: Option<bool>,
+        /// Overrides the recipient the gateway reports seeing.
+        to_address: Option<String>,
+    }
+
+    impl Gateway {
+        fn new(verified: bool, base_units: u128) -> Self {
+            Self {
+                verified,
+                base_units,
+                observed: None,
+                to_address: None,
+            }
+        }
     }
 
     #[async_trait]
@@ -215,12 +282,17 @@ mod tests {
             &self,
             req: &VerifyRequest,
         ) -> Result<TxVerification, DomainError> {
+            let observed = self.observed.unwrap_or(self.verified);
             Ok(TxVerification {
                 verified: self.verified,
+                observed,
                 base_units: self.base_units,
-                confirmations: if self.verified { 20 } else { 1 },
+                confirmations: if observed { 20 } else { 1 },
                 from_address: "0xSender".to_string(),
-                to_address: req.expected_to.clone(),
+                to_address: self
+                    .to_address
+                    .clone()
+                    .unwrap_or_else(|| req.expected_to.clone()),
             })
         }
     }
@@ -238,10 +310,7 @@ mod tests {
                 by_hash: None,
             },
             settlement.clone(),
-            Gateway {
-                verified: true,
-                base_units: expected,
-            },
+            Gateway::new(true, expected),
         );
 
         use_case
@@ -264,10 +333,7 @@ mod tests {
                 by_hash: None,
             },
             settlement.clone(),
-            Gateway {
-                verified: false,
-                base_units: 0,
-            },
+            Gateway::new(false, 0),
         );
 
         let err = use_case
@@ -293,10 +359,7 @@ mod tests {
                 by_hash: Some(other),
             },
             settlement.clone(),
-            Gateway {
-                verified: true,
-                base_units: payment.crypto_base_units,
-            },
+            Gateway::new(true, payment.crypto_base_units),
         );
 
         let err = use_case
@@ -322,10 +385,7 @@ mod tests {
                 by_hash: None,
             },
             settlement.clone(),
-            Gateway {
-                verified: true,
-                base_units: payment.crypto_base_units - 1,
-            },
+            Gateway::new(true, payment.crypto_base_units - 1),
         );
 
         let err = use_case
@@ -337,6 +397,89 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, DomainError::ValidationError(_)));
         assert_eq!(*settlement.calls.lock().unwrap(), 0);
+
+        // The message must not promise this will settle on its own. It cannot:
+        // the transaction is final and short.
+        let text = format!("{}", err);
+        assert!(text.contains("never settle"), "{}", text);
+        assert!(
+            !text.contains("automatically"),
+            "a short payment was described as pending: {}",
+            text
+        );
+    }
+
+    #[tokio::test]
+    async fn a_payment_to_the_wrong_address_says_so_rather_than_pending() {
+        let payment = eth_payment();
+        let settlement = Settlement::default();
+        let mut gateway = Gateway::new(false, payment.crypto_base_units);
+        gateway.observed = Some(true); // final on-chain, just to the wrong place
+        gateway.to_address = Some("0xSomebodyElse".to_string());
+
+        let use_case = ConfirmPayment::new(
+            PaymentRepo {
+                payment: Arc::new(Mutex::new(payment.clone())),
+                by_hash: None,
+            },
+            settlement.clone(),
+            gateway,
+        );
+
+        let err = use_case
+            .execute(ConfirmPaymentInput {
+                booking_id: payment.booking_id,
+                tx_hash: TX.to_string(),
+            })
+            .await
+            .unwrap_err();
+
+        let text = format!("{}", err);
+        assert!(text.contains("0xSomebodyElse"), "{}", text);
+        assert!(text.contains("never settle"), "{}", text);
+        assert_eq!(*settlement.calls.lock().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_transaction_that_is_merely_unconfirmed_is_reported_as_pending() {
+        // The trap in classifying failures: an unconfirmed transaction has no
+        // amount yet, so it must NOT be reported as an underpayment.
+        let payment = eth_payment();
+        let settlement = Settlement::default();
+        let use_case = ConfirmPayment::new(
+            PaymentRepo {
+                payment: Arc::new(Mutex::new(payment.clone())),
+                by_hash: None,
+            },
+            settlement.clone(),
+            Gateway::new(false, 0),
+        );
+
+        let err = use_case
+            .execute(ConfirmPaymentInput {
+                booking_id: payment.booking_id,
+                tx_hash: TX.to_string(),
+            })
+            .await
+            .unwrap_err();
+
+        let text = format!("{}", err);
+        assert!(text.contains("not confirmed yet"), "{}", text);
+        assert!(
+            !text.contains("never settle"),
+            "a pending transaction was called permanently failed: {}",
+            text
+        );
+        assert_eq!(*settlement.calls.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn base_units_render_as_token_amounts() {
+        assert_eq!(format_base_units(97_486_785_679, 9), "97.486785679");
+        assert_eq!(format_base_units(1_000_000_000, 9), "1");
+        assert_eq!(format_base_units(0, 9), "0");
+        assert_eq!(format_base_units(1, 9), "0.000000001");
+        assert_eq!(format_base_units(12_345, 0), "12345");
     }
 
     #[tokio::test]
@@ -349,10 +492,7 @@ mod tests {
                 by_hash: None,
             },
             settlement.clone(),
-            Gateway {
-                verified: true,
-                base_units: payment.crypto_base_units + 1_000,
-            },
+            Gateway::new(true, payment.crypto_base_units + 1_000),
         );
 
         use_case

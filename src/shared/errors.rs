@@ -31,6 +31,15 @@ pub enum InfraError {
     Database(String),
     Blockchain(String),
     Auth(String),
+    /// The caller supplied something an external service rejected as malformed
+    /// -- a transaction hash that is not a valid signature, say.
+    ///
+    /// Distinct from `Blockchain` because every other variant means "we failed",
+    /// and `From<InfraError> for DomainError` turns those into a 500. Without
+    /// this, a user pasting a mistyped hash got "Internal server error", which
+    /// blames the server for the user's typo and buries a real fault under
+    /// noise if one ever happens.
+    InvalidRequest(String),
 }
 
 impl fmt::Display for InfraError {
@@ -39,6 +48,8 @@ impl fmt::Display for InfraError {
             InfraError::Database(msg) => write!(f, "Database error: {}", msg),
             InfraError::Blockchain(msg) => write!(f, "Blockchain error: {}", msg),
             InfraError::Auth(msg) => write!(f, "Auth error: {}", msg),
+            // No prefix: this one is shown to the user as-is.
+            InfraError::InvalidRequest(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -47,6 +58,10 @@ impl std::error::Error for InfraError {}
 
 impl From<InfraError> for DomainError {
     fn from(e: InfraError) -> Self {
-        DomainError::InternalError(e.to_string())
+        match e {
+            // Bad input is the caller's to fix, so it must not surface as a 500.
+            InfraError::InvalidRequest(msg) => DomainError::ValidationError(msg),
+            other => DomainError::InternalError(other.to_string()),
+        }
     }
 }

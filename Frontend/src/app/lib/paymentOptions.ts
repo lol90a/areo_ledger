@@ -7,9 +7,9 @@ export type { PaymentOption };
  * `available: false`.
  *
  * These entries exist so the network picker renders rather than collapsing into an
- * empty page. They deliberately carry no wallet address and no chain id: a deposit
- * address or chain id invented in the browser is exactly how funds end up on the
- * wrong network, so checkout refuses to quote against a fallback route.
+ * empty page. They deliberately carry no wallet address, chain id, network name or
+ * RPC endpoint: any of those invented in the browser is exactly how funds end up on
+ * the wrong network, so checkout refuses to quote against a fallback route.
  */
 export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
   {
@@ -23,6 +23,8 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain_id: null,
     token_contract: null,
     decimals: 8,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "eth",
@@ -35,6 +37,8 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain_id: null,
     token_contract: null,
     decimals: 18,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "usdt",
@@ -47,6 +51,8 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain_id: null,
     token_contract: null,
     decimals: 6,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "usdc",
@@ -59,6 +65,8 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain_id: null,
     token_contract: null,
     decimals: 6,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "bsc",
@@ -71,6 +79,8 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain_id: null,
     token_contract: null,
     decimals: 18,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "sol",
@@ -83,6 +93,8 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain_id: null,
     token_contract: null,
     decimals: 9,
+    network: null,
+    rpc_url: null,
   },
 ];
 

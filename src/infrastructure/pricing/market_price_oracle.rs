@@ -35,10 +35,9 @@ pub struct MarketPriceOracle {
 
 impl MarketPriceOracle {
     pub fn new(pool: DbPool, live: bool) -> Self {
-        let http = Client::builder()
-            .timeout(Duration::from_secs(6))
-            .build()
-            .unwrap_or_else(|_| Client::new());
+        // Built centrally so the request carries a User-Agent: CoinGecko answers
+        // 403 without one, which this oracle used to absorb as "no price".
+        let http = crate::infrastructure::http::client(Duration::from_secs(6));
         Self {
             pool,
             http,
