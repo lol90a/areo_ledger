@@ -16,6 +16,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Job names deliberately carry no test counts. They were "(51)", "(14)" and so
+# on, and the first change to the suites turned every one of them into a stale
+# claim in the UI. The run itself reports the real number.
+
 env:
   CARGO_TERM_COLOR: always
   # Debug info is the bulk of the target dir and nothing here reads a backtrace
@@ -24,7 +28,7 @@ env:
 
 jobs:
   backend-unit:
-    name: Backend unit (51)
+    name: Backend unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +46,7 @@ jobs:
         run: cargo test --lib
 
   backend-integration:
-    name: Backend integration, real Postgres (10)
+    name: Backend integration (real Postgres)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -75,7 +79,7 @@ jobs:
         run: cargo test --test integration_postgres -- --ignored --test-threads=1
 
   solana-unit:
-    name: Solana program unit (14)
+    name: Solana program unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +100,7 @@ jobs:
         run: cargo test --lib
 
   solana-anchor:
-    name: Solana integration, local validator (38)
+    name: Solana integration (local validator)
     runs-on: ubuntu-latest
     # The image carries Anchor 0.29.0, which must match the program's
     # anchor-lang. Its own Solana (1.17) and Node (18) are both too old and get
@@ -196,7 +200,7 @@ jobs:
         run: tail -200 contracts/solana/.anchor/test-ledger/validator.log || true
 
   evm:
-    name: EVM contracts (52)
+    name: EVM contracts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
