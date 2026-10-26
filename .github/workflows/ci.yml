@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # Only main on push. A branch with an open PR would otherwise run everything
+  # twice per push -- once for `push`, once for `pull_request` -- and the two
+  # land in different concurrency groups, so neither cancels the other.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
