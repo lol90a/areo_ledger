@@ -104,6 +104,13 @@ jobs:
     container:
       image: backpackapp/build:v0.29.0
       options: --user root
+    env:
+      # A container job gets HOME=/github/home, not /root, so rustup looks for
+      # its config in an empty directory, finds no default toolchain, and every
+      # cargo call dies with "could not choose a version of cargo to run".
+      # Point both at the image's actual Rust installation.
+      RUSTUP_HOME: /root/.rustup
+      CARGO_HOME: /root/.cargo
     steps:
       - uses: actions/checkout@v4
 
@@ -128,9 +135,11 @@ jobs:
       - name: Cache cargo registry and SBF build
         uses: actions/cache@v4
         with:
+          # Explicit paths, not ~, because CARGO_HOME is /root/.cargo here while
+          # HOME is /github/home.
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            /root/.cargo/registry
+            /root/.cargo/git
             contracts/solana/target
           key: anchor-${{ runner.os }}-${{ hashFiles('contracts/solana/Cargo.lock') }}
           restore-keys: anchor-${{ runner.os }}-
@@ -146,6 +155,7 @@ jobs:
           solana --version
           anchor --version
           node --version
+          cargo --version
           echo "lockfile format: $(grep -m1 '^version = ' contracts/solana/Cargo.lock)"
 
       - name: Create a throwaway validator wallet
