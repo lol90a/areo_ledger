@@ -195,9 +195,9 @@ PostgreSQL instance and 46 backend unit tests.
 
 ### 5b. On-chain escrow — BUILT AND TESTED, NOT WIRED TO THE BACKEND
 
-Both escrow contracts are complete, hardened and tested (52 Hardhat tests executed;
-14 Solana unit tests executed; a 30-case Anchor suite written but not executed —
-see `SECURITY_AUDIT.md` §7). **No backend code calls them, and no frontend code
+Both escrow contracts are complete, hardened and tested (52 Hardhat tests, 14
+Solana unit tests, and a 38-case Anchor suite against a local validator — all
+executed; see `SECURITY_AUDIT.md` §7 for what that still does not prove). **No backend code calls them, and no frontend code
 builds their instructions.** They exist in the repository as a correct
 implementation of the escrow model, not as the live settlement path.
 
@@ -481,7 +481,9 @@ TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55439/postgres \
 cd contracts/solana/programs/aeroledger-escrow && cargo test --lib
 
 # Solana integration (requires the Anchor CLI — NOT run in this environment)
-cd contracts/solana && yarn install && anchor keys sync && anchor test
+cd contracts/solana && yarn install --frozen-lockfile && anchor build
+# then point the placeholder id at the generated keypair -- see TESTING.md
+anchor test
 
 # EVM
 cd contracts/ethereum && npm install && npx hardhat test

@@ -718,7 +718,8 @@ The sentence that ties the whole system up — worth memorising:
 |---|---|---|
 | Backend unit | `cargo test --lib` | **51 passed** |
 | Backend integration (real Postgres) | `cargo test --test integration_postgres -- --ignored --test-threads=1` | **10 passed** |
-| Solana program unit | `cargo test --lib` in the program dir | **14 passed** |
+| Solana program unit | `cargo test --lib` in `contracts/solana` | **14 passed** |
+| Solana integration (local validator) | `anchor test` in `contracts/solana` | **38 passing** |
 | EVM contracts | `npx hardhat test` | **52 passed** |
 | Rust format / lint | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` | clean |
 | Frontend types / build | `npx tsc --noEmit`, `npx vite build` | clean / succeeds |
@@ -794,8 +795,10 @@ Near the end, before they find it. It is the strongest move available:
 > **Two — the escrow contracts aren't wired in.** They're built and tested; the live
 > path is direct payment with on-chain verification.
 >
-> **Three — the Anchor integration suite has never been executed.** It's written, it's
-> committed, and there's no Solana toolchain on my machine. The EVM equivalents do run.
+> **Three — neither contract has been deployed to a cluster.** The Anchor suite
+> does run now, 38 cases against a local validator — and running it is what found
+> a stack overflow that made `create_order` unrunnable on-chain. But a local
+> validator isn't a fee market or a congested cluster.
 >
 > **Four — flight availability isn't reserved.** A booking records a price; it doesn't
 > hold a seat. The catalogue is seeded data with no provider behind it."

@@ -87,7 +87,9 @@ declare_id!("Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j");
 
 **This is the Anchor template placeholder and it is a deployment blocker by design.**
 No real keypair has been generated or committed — which is correct, because the
-keypair must never be committed. Before any deploy: `anchor keys sync`. Logged as
+keypair must never be committed. Before any deploy, set the id in both files per
+`contracts/solana/TESTING.md` (not `anchor keys sync` -- it updates only one of the
+three `[programs.*]` entries per run). Logged as
 SOL-12, open.
 
 ```rust
@@ -910,9 +912,10 @@ Documentation only; no behaviour change. Both comments now state what the code d
 ## Post-fix verification
 
 ```text
-contracts/solana/programs/aeroledger-escrow $ cargo test --lib   → 14 passed, 0 failed
-contracts/ethereum                          $ npx hardhat test   → 52 passed, 0 failed
-                                            $ npx hardhat compile → clean
+contracts/solana   $ cargo test --lib    → 14 passed, 0 failed
+contracts/solana   $ anchor test         → 38 passing, 0 failing
+contracts/ethereum $ npx hardhat test    → 52 passed, 0 failed
+                   $ npx hardhat compile → clean
 ```
 
 ---
@@ -921,11 +924,13 @@ contracts/ethereum                          $ npx hardhat test   → 52 passed, 
 
 1. **Neither contract is wired into the backend.** The live path is direct payment
    with on-chain verification.
-2. **The Anchor integration suite has never been executed** — 30+ adversarial cases,
-   written and committed, no Solana toolchain available. The EVM equivalents *are*
-   executed.
+2. **Neither contract has been deployed to any cluster.** The Anchor suite runs —
+   38 adversarial cases against a local validator — but a local validator is not a
+   fee market. Running it is what found SOL-14, a BPF stack overflow that made
+   `create_order` unrunnable on-chain while every host-target check passed.
 3. **The Solana program id is the Anchor placeholder** (SOL-12). Deployment blocker by
-   design; `anchor keys sync` before any deploy.
+   design; set the real id in `Anchor.toml` and `declare_id!` before any deploy,
+   per `contracts/solana/TESTING.md`.
 4. **Single-key governance on both.** `Config.admin` and `owner()` should be a
    multisig behind a timelock before real funds move.
 5. **The quote authority is a hot key** on both chains. It belongs in an HSM/KMS

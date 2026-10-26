@@ -146,9 +146,34 @@ describe("aeroledger-escrow", () => {
     } catch (err: any) {
       if (err?.message?.startsWith?.("expected the transaction to fail")) throw err;
       const text = JSON.stringify(err?.error ?? err?.message ?? err);
-      const matched = codes.some((code) => text.includes(code));
-      expect(matched, `expected one of [${codes.join(", ")}] in: ${text}`).to.equal(true);
+      const matched = codes.some((code) => {
+        if (text.includes(code)) return true;
+        // A rejection raised during preflight simulation arrives as a plain
+        // SendTransactionError -- "custom program error: 0x1781" -- with no
+        // logs for Anchor to translate back into a name. Matching on the name
+        // alone would report a *correct* rejection as a failure, so resolve
+        // the name to its numeric code and match that too.
+        const num = errorCode(code);
+        if (num === undefined) return false;
+        return (
+          text.includes(`custom program error: 0x${num.toString(16)}`) ||
+          text.includes(`custom program error: ${num}`) ||
+          text.includes(`"number":${num}`)
+        );
+      });
+      const logs = Array.isArray(err?.logs) ? `\nprogram logs:\n  ${err.logs.join("\n  ")}` : "";
+      expect(matched, `expected one of [${codes.join(", ")}] in: ${text}${logs}`).to.equal(true);
     }
+  }
+
+  /**
+   * Resolve an error name to its numeric code: first the program's own errors
+   * (6000+, from the IDL), then Anchor's built-in constraint/account errors.
+   */
+  function errorCode(name: string): number | undefined {
+    const fromIdl = (program.idl as any)?.errors?.find((e: any) => e.name === name);
+    if (fromIdl) return fromIdl.code;
+    return (anchor as any).LangErrorCode?.[name];
   }
 
   type OrderParams = {
@@ -569,7 +594,15 @@ describe("aeroledger-escrow", () => {
     });
 
     it("rejects a duplicate order id", async () => {
-      await expectError(createOrder({ orderId, amount, fee }), "already in use");
+      // The Order PDA for this id already exists, so `init` fails inside the
+      // System Program with AccountAlreadyInUse, which is error 0. Through
+      // program logs that renders as "already in use"; straight from preflight
+      // simulation it arrives only as the bare code.
+      await expectError(
+        createOrder({ orderId, amount, fee }),
+        "already in use",
+        "custom program error: 0x0"
+      );
     });
 
     it("rejects completion before the seller has confirmed", async () => {
@@ -599,7 +632,11 @@ describe("aeroledger-escrow", () => {
     it("rejects a substituted payout token account", async () => {
       await expectError(
         completeOrder(orderId, seller, { sellerTokenAccount: attackerAta }),
-        "ConstraintAssociated"
+        // `associated_token::authority = payout_wallet` expands to an owner
+        // check before the ATA-address check, so substituting an account owned
+        // by somebody else trips ConstraintTokenOwner first. That is the
+        // constraint that actually protects the payout, so assert on it.
+        "ConstraintTokenOwner"
       );
     });
 
@@ -672,7 +709,10 @@ describe("aeroledger-escrow", () => {
           })
           .signers([buyer])
           .rpc(),
-        "ConstraintAssociated"
+        // Same ordering as above: the refund destination is checked for owner
+        // before ATA derivation, so an attacker-controlled account is rejected
+        // by ConstraintTokenOwner.
+        "ConstraintTokenOwner"
       );
     });
 
@@ -804,7 +844,17 @@ describe("aeroledger-escrow", () => {
         .instruction();
 
       const tx = new Transaction().add(attestation(message)).add(ix);
-      await expectError(provider.sendAndConfirm(tx, [buyer]), "ConstraintAssociated");
+      // The substituted account is never even consulted. `init` +
+      // `associated_token::authority = order` makes Anchor DERIVE the vault
+      // address from (order, mint) and create it by CPI, so the CPI references
+      // the genuine ATA -- which the attacker did not put in the transaction.
+      // The runtime rejects it as a missing account before any constraint on
+      // the forged one runs. Asserting the real mechanism rather than a
+      // ConstraintAssociated check that never gets the chance to fire.
+      await expectError(
+        provider.sendAndConfirm(tx, [buyer]),
+        "An account required by the instruction is missing"
+      );
     });
 
     it("rejects an order PDA derived from the wrong seed", async () => {

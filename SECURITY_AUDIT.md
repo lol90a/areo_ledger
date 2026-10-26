@@ -22,18 +22,15 @@ Everything below was run on this machine, on the code as it now stands.
 |---|---|---|
 | Backend unit | `cargo test --lib` | **51 passed, 0 failed** |
 | Backend integration (real Postgres) | `TEST_DATABASE_URL=... cargo test --test integration_postgres -- --ignored --test-threads=1` | **10 passed, 0 failed** |
-| Solana program unit | `cd contracts/solana/programs/aeroledger-escrow && cargo test --lib` | **14 passed, 0 failed** |
+| Solana program unit | `cd contracts/solana && cargo test --lib` | **14 passed, 0 failed** |
+| Solana program integration (local validator) | `cd contracts/solana && anchor test` | **38 passing, 0 failing** |
 | EVM contracts | `cd contracts/ethereum && npx hardhat test` | **52 passed, 0 failed** |
 | Rust format gate | `cargo fmt --all -- --check` | clean |
 | Rust lint gate | `cargo clippy --all-targets -- -D warnings` | clean |
 | Frontend types | `cd Frontend && npx tsc --noEmit` | clean |
 | Frontend production build | `cd Frontend && npx vite build` | succeeded |
 
-**Not executed here:** the Anchor integration suite
-(`contracts/solana/tests/aeroledger-escrow.ts`, 30+ adversarial cases). The Anchor
-CLI and the Solana toolchain are not installed in this environment — `anchor` and
-`solana` are both absent from `PATH`. The tests are written and committed; see
-[§7](#7-what-has-not-been-verified) for the exact commands to run them.
+**165 tests in total.** The Anchor suite runs against a local `solana-test-validator` on Solana 1.18.26 / Anchor 0.29.0; `contracts/solana/TESTING.md` records the exact toolchain and why each dependency is pinned. Neither contract has been deployed to any cluster.
 
 ---
 
@@ -46,7 +43,7 @@ and hygiene.
 
 | ID | Severity | Title | Status |
 |---|---|---|---|
-| [SOL-01](#sol-01) | Critical | Escrow had no seller; payouts went to the admin | Fixed, unit-tested + Anchor tests written (not executed) |
+| [SOL-01](#sol-01) | Critical | Escrow had no seller; payouts went to the admin | Fixed, unit-tested, Anchor-tested |
 | [SOL-02](#sol-02) | Critical | Buyer chose the amount they paid | Fixed, unit-tested |
 | [SOL-03](#sol-03) | High | `initialize` could be front-run to seize admin | Fixed |
 | [SOL-04](#sol-04) | High | Any SPL mint could be escrowed | Fixed |
@@ -59,6 +56,8 @@ and hygiene.
 | [SOL-11](#sol-11) | Low | Single-step admin handover | Fixed |
 | [SOL-12](#sol-12) | Info | Program id is still the Anchor placeholder | **Open — deployment blocker** |
 | [SOL-13](#sol-13) | Low | `register_merchant` accepted the default pubkey as a seller identity | Fixed |
+| [SOL-14](#sol-14) | **High** | `create_order` overflowed the BPF stack and could never have run on-chain | Fixed, Anchor-tested |
+| [SOL-15](#sol-15) | Medium | The program could not be built at all: lockfile format and floating dependencies | Fixed |
 | [EVM-01](#evm-01) | Critical | Payouts went to `owner()`; no seller existed | Fixed, tested |
 | [EVM-02](#evm-02) | Critical | Buyer chose `msg.value` | Fixed, tested |
 | [EVM-03](#evm-03) | Medium | Payout followed the *live* owner/treasury, not the order | Fixed, tested |
@@ -201,7 +200,7 @@ replay is prevented because the order PDA can only be initialised once.
 (which asserts that changing *any* field -- order id, buyer, seller, mint, amount,
 fee or expiry -- produces a different message). Plus the Anchor cases
 "rejects a buyer who signs a cheaper amount than the order claims" and
-"rejects a quote issued to a different buyer (quote theft)" (not executed).
+"rejects a quote issued to a different buyer (quote theft)", both executed.
 
 *Residual risk.* `quote_authority` is a hot key. If it leaks, an attacker can
 authorise under-priced orders until it is rotated via `set_config`. Mitigations in
@@ -338,9 +337,13 @@ mistyped address is recoverable.
 `declare_id!("Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j")` and all three
 `Anchor.toml` entries are the template placeholder. This is a deployment blocker by
 design — no real keypair has been generated or committed, which is correct. Before
-any deploy: `anchor keys sync`, which derives the id from
-`target/deploy/aeroledger_escrow-keypair.json` and rewrites both files. That keypair
-must never be committed.
+any deploy the id must be set from
+`target/deploy/aeroledger_escrow-keypair.json` in both `Anchor.toml` and
+`declare_id!`. Use the substitution in `contracts/solana/TESTING.md`, **not**
+`anchor keys sync`: with three `[programs.*]` sections naming the same program it
+updates only one per run, leaving `localnet` on the placeholder while
+`declare_id!` has moved, which deploys to one address code that declares another
+(`DeclaredProgramIdMismatch`, 4100). That keypair must never be committed.
 
 ### SOL-13
 **`register_merchant` accepted the default pubkey as a seller identity** — Low
@@ -366,8 +369,87 @@ smell.
 the other eight sites use, applied to `ctx.accounts.merchant_authority.key()`.
 
 *Evidence.* The program compiles and its 14 unit tests pass. The guard itself is
-inside an Anchor instruction context, so it is **not** unit-tested — it belongs to
-the unexecuted Anchor integration suite (§7). Stated rather than glossed.
+inside an Anchor instruction context, so it is covered by the Anchor integration
+suite, which now runs: 38 passing.
+
+### SOL-14
+**`create_order` overflowed the BPF stack and could never have run on-chain** —
+**High**
+
+This was invisible to every check the project had. The program compiles cleanly
+for the host target, all 14 unit tests pass, and `cargo check` is silent. It is
+only building for the **SBF target** that surfaces it:
+
+```
+Error: Function ..CreateOrder as anchor_lang::Accounts..try_accounts
+Stack offset of 4464 exceeded max offset of 4096 by 368 bytes
+```
+
+A BPF stack frame is 4KB. `CreateOrder` declares nine deserialized accounts —
+`Config`, `SupportedMint`, `Merchant`, `Order`, `Mint`, and four `TokenAccount`s
+— and Anchor's generated `try_accounts` materialises every one of them into a
+single frame. An `spl_token::state::Account` alone is 165 bytes before Anchor's
+wrapper, and `Order` carries a 64-byte order id.
+
+The consequence is not a warning. Every `create_order` call would have hit a
+stack-access violation at runtime, which means **no order could ever have been
+created** — the contract was undeployable in practice, and the escrow had no
+working entry point at all. It would have been discovered the first time anyone
+tried it against a validator.
+
+That nobody found it earlier is the point: it is reachable only by actually
+building for the target and running the program. It was the first thing the
+integration run surfaced.
+
+*Fix.* Box the nine accounts, which moves each deserialized struct to the heap
+and leaves only a pointer per account in the frame:
+
+```rust
+pub config: Box<Account<'info, Config>>,
+pub order: Box<Account<'info, Order>>,
+pub escrow_token_account: Box<Account<'info, TokenAccount>>,
+// ... and the other six
+```
+
+No other instruction was flagged; `CreateOrder` is the only one that holds this
+many accounts at once.
+
+*Evidence.* The SBF build is clean, and the 15 tests that exercise order
+creation — the whole "signed quote enforcement" group, settlement, and account
+substitution — pass against a local validator.
+
+### SOL-15
+**The program could not be built at all** — Medium
+
+Three independent problems, each of which alone stops `anchor build`:
+
+1. **No workspace root.** `contracts/solana/` had no `Cargo.toml`, so Anchor had
+   no workspace to build. Added — and note that the program's
+   `[profile.release] overflow-checks = true` had to move into it, because
+   Cargo **silently ignores** profile settings in a non-root member. The
+   overflow protection the program claimed was not in effect.
+2. **`Cargo.lock` was lockfile format v4.** The Solana toolchain builds with
+   cargo 1.73, which cannot parse v4 and aborts before compiling anything. The
+   committed lock had therefore never been used to build this program.
+3. **Dependencies floated to versions the toolchain cannot compile.** Nine
+   crates resolved to releases needing edition 2024 or a rustc newer than
+   platform-tools ships — `block-buffer`, `toml_edit`, `indexmap`, `borsh`,
+   `rayon`, `wasm-bindgen` and others, reached transitively through `blake3`,
+   `proc-macro-crate`, `jobserver` and `serde_json`.
+
+The same class of problem existed on the JavaScript side: no `yarn.lock` at all,
+so `@solana/spl-token` pulled a package requiring Node >= 20.18, and
+`rpc-websockets` floated to 7.11, which restructured `dist/` and breaks
+`@solana/web3.js@1.91.8` at require time.
+
+*Fix.* Workspace root added with the release profile; lock converted to v3 and
+the nine crates pinned; `yarn.lock` committed with `rpc-websockets` and a single
+`@solana/web3.js` pinned through `resolutions`. `contracts/solana/TESTING.md`
+records why each pin exists so a future upgrade knows what it is re-opening.
+
+*Evidence.* A clean checkout of the committed files builds and runs the full
+suite with no in-place fixups: `yarn install --frozen-lockfile`, `anchor build`,
+`anchor test` → **38 passing**.
 
 ### Solana account sizing (§4.8 of the brief)
 
@@ -1021,26 +1103,22 @@ static handler is ever added — they should be served from a separate origin wi
 
 Stated plainly, because the value of the rest depends on this list being honest.
 
-1. **The Anchor integration tests have not been run.** The Anchor CLI and Solana
-   toolchain are not installed here (`anchor`, `solana` absent from `PATH`), and no
-   local validator is available. The suite is written
-   (`contracts/solana/tests/aeroledger-escrow.ts`) and covers quote forgery, account
-   substitution, PDA seed mismatch, authorisation, state-machine violations, double
-   completion, double refund, timeouts and pause. To run it:
+1. **The program has still never been deployed to any cluster.** The Anchor
+   suite now runs — 38 passing against a local `solana-test-validator`, on
+   Solana 1.18.26 / Anchor 0.29.0, reproducible from a clean checkout per
+   `contracts/solana/TESTING.md`. That covers quote forgery, account
+   substitution, PDA seed mismatch, authorisation, state-machine violations,
+   double completion, double refund, timeouts and pause.
 
-   ```bash
-   # install: https://www.anchor-lang.com/docs/installation
-   cd contracts/solana
-   yarn install
-   anchor keys sync      # SOL-12: replace the placeholder program id first
-   anchor test
-   ```
+   What a local validator does **not** prove: behaviour under a real fee market,
+   compute-unit limits on a congested cluster, or anything about devnet/mainnet
+   deployment. The program id is still the placeholder (SOL-12), deliberately,
+   so it cannot be deployed by accident.
 
-   What **is** executed for the Solana program: 14 unit tests covering the entire
-   quote-attestation parser and the account-size calculation. The constraint
-   expressions themselves are type-checked by `cargo check` but their *runtime*
-   behaviour is unproven here. The equivalent business rules are executed on the EVM
-   side, which is the closest available evidence.
+   Running the suite is what found SOL-14 — a stack overflow that made
+   `create_order` unrunnable on-chain while every host-target check stayed
+   green. That is the argument for not treating a written test as a passing
+   one.
 
 2. **Neither contract has been deployed, to any network.** No program keypair, no
    contract address, no gas measurements. The Solana program id is still the Anchor
