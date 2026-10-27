@@ -104,7 +104,8 @@ jobs:
     runs-on: ubuntu-latest
     # The image carries Anchor 0.29.0, which must match the program's
     # anchor-lang. Its own Solana (1.17) and Node (18) are both too old and get
-    # replaced below -- see contracts/solana/TESTING.md for why each is needed.
+    # replaced below: @solana/codecs-* refuses Node 18, and Solana 1.17 ships
+    # platform-tools with rustc 1.68, too old for the pinned solana-program.
     container:
       image: backpackapp/build:v0.29.0
       options: --user root

@@ -44,8 +44,14 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  *
  *      What the owner CANNOT do: choose a payout or refund destination, change the
  *      amount of a live order, confirm on a seller's behalf, or trap a buyer's funds
- *      (see {timeoutRefund}). What the owner CAN do, and the residual risk it
- *      carries, is documented in SECURITY_AUDIT.md.
+ *      (see {timeoutRefund}).
+ *
+ *      What the owner CAN do, stated plainly because it is the largest residual
+ *      power here: decide the outcome of any **Confirmed** order. {completeOrder}
+ *      releases it to the seller and {refundOrder} returns it to the buyer, and the
+ *      owner may call either. The owner is therefore the dispute arbiter. The
+ *      destinations are still fixed by the order's own snapshot, so this is a choice
+ *      between two predetermined parties, never a redirection to a third.
  *
  *      ## Asset-handling properties
  *      - Native and ERC20 escrow are strictly segregated ({createOrder} is
@@ -56,9 +62,9 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  *        bool) work and silent-false transfers revert.
  *      - The contract measures the **actual** received balance delta and requires it
  *        to be at least the quoted amount. A token that taxes the INBOUND transfer
- *        therefore reverts rather than under-funding an order: see
- *        SECURITY_AUDIT.md (EVM-07). An outbound-only tax is out of scope and is
- *        excluded by the token allow-list, not by code — see {createOrderERC20}.
+ *        therefore reverts rather than under-funding an order. An outbound-only tax
+ *        is out of scope and is excluded by the token allow-list, not by code — see
+ *        {createOrderERC20}.
  *      - Native transfers use a checked low-level call, so a multisig payout address
  *        cannot be bricked by the 2300-gas stipend.
  *      - Checks-Effects-Interactions plus nonReentrant on every value-moving path.

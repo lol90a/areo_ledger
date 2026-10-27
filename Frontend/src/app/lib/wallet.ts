@@ -17,8 +17,8 @@
  * MetaMask, Rabby, Phantom, Solflare and the rest implement. Pulling in wagmi /
  * viem / `@solana/wallet-adapter` would add a large dependency tree to a React 18 +
  * Vite app for connect-and-read-balance, which is all the checkout needs. The
- * trade-off (no WalletConnect, no mobile deep-linking, no multi-wallet modal) is
- * recorded in SECURITY_AUDIT.md under FE-06.
+ * trade-off is deliberate and worth stating: no WalletConnect, no mobile
+ * deep-linking, and no multi-wallet selection modal.
  *
  * All amounts are handled as `bigint` in the token's smallest unit. No floats touch
  * a balance comparison.
