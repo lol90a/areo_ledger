@@ -1,5 +1,7 @@
 # AeroLedger
 
+[![CI](https://github.com/lol90a/areo_ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/lol90a/areo_ledger/actions/workflows/ci.yml)
+
 A crypto-native commerce platform for private aviation charter and tokenized
 luxury assets. A buyer browses a catalogue, books a flight or an asset share, and
 pays in cryptocurrency; the backend prices the order itself, verifies the transfer
@@ -165,7 +167,7 @@ curl http://127.0.0.1:8071/api/health
 
 ## Testing
 
-Five suites. CI runs all of them on every pull request.
+Six suites, every one of them run by CI on every push and pull request.
 
 ```bash
 # Backend unit tests
