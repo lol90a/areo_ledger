@@ -22,6 +22,12 @@ const recentTransactions = [
 export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100">
+        <span className="font-semibold">Sample data — not your live account.</span> The figures below are illustrative placeholders. Visit
+        {" "}
+        <a href="/transactions" className="underline hover:text-amber-200">Transactions</a> for your real backend settlement history.
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Welcome Back, Investor</h1>

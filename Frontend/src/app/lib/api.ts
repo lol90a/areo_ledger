@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8081").replace(/\/$/, "");
 const AUTH_STORAGE_KEY = "aeroledger-auth-session";
 const AUTH_EVENT_NAME = "aeroledger-auth-updated";
 
@@ -34,14 +34,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers.set("Authorization", `Bearer ${options.token}`);
   }
 
+  // Exclude our custom `body`/`token` fields from the spread; `body` is set
+  // explicitly below with a type the fetch API accepts.
+  const { body: _body, token: _token, ...fetchInit } = options;
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...fetchInit,
     headers,
     body:
       options.body === undefined
         ? undefined
         : isFormData
-          ? options.body
+          ? (options.body as BodyInit)
           : JSON.stringify(options.body),
   });
 
@@ -56,7 +60,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    // Only a request that carried an auth token can have its session expire.
+    const hadToken = Boolean(options.token);
+
+    if (response.status === 401 && hadToken && typeof window !== "undefined") {
       window.localStorage.removeItem(AUTH_STORAGE_KEY);
       window.dispatchEvent(new Event(AUTH_EVENT_NAME));
     }
@@ -67,8 +74,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         : typeof data === "string"
           ? data
           : `Request failed with status ${response.status}`;
+
+    // Rewrite to the "session expired" copy only for authenticated requests.
+    // Unauthenticated requests (login/signup) should surface the backend error
+    // body so wrong-password / invalid-credential messages read correctly.
     throw new ApiError(
-      response.status === 401
+      response.status === 401 && hadToken
         ? "Your session expired or is no longer valid. Sign in again and retry."
         : message,
       response.status,

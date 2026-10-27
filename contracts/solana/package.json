@@ -1,0 +1,30 @@
+{
+  "name": "aeroledger-solana-escrow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "anchor test",
+    "lint": "tsc --noEmit -p ./tsconfig.json"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "0.29.0",
+    "@noble/hashes": "1.4.0",
+    "@solana/spl-token": "0.4.6",
+    "@solana/web3.js": "1.91.8"
+  },
+  "devDependencies": {
+    "@types/chai": "4.3.16",
+    "@types/mocha": "10.0.6",
+    "chai": "4.4.1",
+    "mocha": "10.4.0",
+    "ts-mocha": "10.0.0",
+    "typescript": "5.4.5"
+  },
+  "resolutions": {
+    "@solana/web3.js": "1.91.8",
+    "rpc-websockets": "7.10.0"
+  },
+  "engines": {
+    "node": ">=20.18.0"
+  }
+}

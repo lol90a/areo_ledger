@@ -35,6 +35,9 @@ pub struct Booking {
     pub id: Uuid,
     pub user_id: Uuid,
     pub flight_id: Option<Uuid>,
+    /// Marketplace asset this booking is for, when it is not a flight. Recorded so
+    /// the booking can be re-priced against the authoritative catalogue at checkout.
+    pub asset_id: Option<Uuid>,
     pub status: BookingStatus,
     pub pricing: PriceBreakdown,
     pub payment_method: String,
@@ -44,10 +47,12 @@ pub struct Booking {
 }
 
 impl Booking {
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         id: Uuid,
         user_id: Uuid,
         flight_id: Option<Uuid>,
+        asset_id: Option<Uuid>,
         base_price: Money,
         payment_method: String,
     ) -> Result<Self, DomainError> {
@@ -71,6 +76,7 @@ impl Booking {
             id,
             user_id,
             flight_id,
+            asset_id,
             status: BookingStatus::Pending,
             pricing,
             payment_method,
@@ -80,10 +86,12 @@ impl Booking {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn from_db(
         id: Uuid,
         user_id: Uuid,
         flight_id: Option<Uuid>,
+        asset_id: Option<Uuid>,
         status: BookingStatus,
         pricing: PriceBreakdown,
         payment_method: String,
@@ -95,6 +103,7 @@ impl Booking {
             id,
             user_id,
             flight_id,
+            asset_id,
             status,
             pricing,
             payment_method,

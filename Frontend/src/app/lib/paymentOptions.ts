@@ -2,6 +2,15 @@ import { fetchPaymentOptions as fetchPaymentOptionsFromBackend, type PaymentOpti
 
 export type { PaymentOption };
 
+/**
+ * Shown only when the backend is unreachable, and every route is marked
+ * `available: false`.
+ *
+ * These entries exist so the network picker renders rather than collapsing into an
+ * empty page. They deliberately carry no wallet address, chain id, network name or
+ * RPC endpoint: any of those invented in the browser is exactly how funds end up on
+ * the wrong network, so checkout refuses to quote against a fallback route.
+ */
 export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
   {
     method: "btc",
@@ -9,7 +18,13 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain: "Bitcoin",
     display_name: "Bitcoin (BTC)",
     wallet_address: null,
-    available: true,
+    available: false,
+    wallet_kind: "manual",
+    chain_id: null,
+    token_contract: null,
+    decimals: 8,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "eth",
@@ -17,7 +32,13 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain: "Ethereum",
     display_name: "Ethereum (ETH)",
     wallet_address: null,
-    available: true,
+    available: false,
+    wallet_kind: "evm",
+    chain_id: null,
+    token_contract: null,
+    decimals: 18,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "usdt",
@@ -25,7 +46,13 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain: "Ethereum",
     display_name: "Tether USD (USDT)",
     wallet_address: null,
-    available: true,
+    available: false,
+    wallet_kind: "evm",
+    chain_id: null,
+    token_contract: null,
+    decimals: 6,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "usdc",
@@ -33,15 +60,27 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain: "Ethereum",
     display_name: "USD Coin (USDC)",
     wallet_address: null,
-    available: true,
+    available: false,
+    wallet_kind: "evm",
+    chain_id: null,
+    token_contract: null,
+    decimals: 6,
+    network: null,
+    rpc_url: null,
   },
   {
-    method: "binance",
+    method: "bsc",
     token: "BNB",
     chain: "BSC",
     display_name: "BNB on BSC",
     wallet_address: null,
-    available: true,
+    available: false,
+    wallet_kind: "evm",
+    chain_id: null,
+    token_contract: null,
+    decimals: 18,
+    network: null,
+    rpc_url: null,
   },
   {
     method: "sol",
@@ -49,7 +88,13 @@ export const FALLBACK_PAYMENT_OPTIONS: PaymentOption[] = [
     chain: "Solana",
     display_name: "Solana (SOL)",
     wallet_address: null,
-    available: true,
+    available: false,
+    wallet_kind: "solana",
+    chain_id: null,
+    token_contract: null,
+    decimals: 9,
+    network: null,
+    rpc_url: null,
   },
 ];
 

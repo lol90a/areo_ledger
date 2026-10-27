@@ -1,0 +1,241 @@
+name: CI
+
+on:
+  # Only main on push. A branch with an open PR would otherwise run everything
+  # twice per push -- once for `push`, once for `pull_request` -- and the two
+  # land in different concurrency groups, so neither cancels the other.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous run. The Anchor job costs
+# several minutes of SBF compilation, so there is no point finishing a run whose
+# result is already stale.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Job names deliberately carry no test counts. They were "(51)", "(14)" and so
+# on, and the first change to the suites turned every one of them into a stale
+# claim in the UI. The run itself reports the real number.
+
+env:
+  CARGO_TERM_COLOR: always
+  # Debug info is the bulk of the target dir and nothing here reads a backtrace
+  # out of a core dump; dropping it makes the cache meaningfully smaller.
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  backend-unit:
+    name: Backend unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --lib
+
+  backend-integration:
+    name: Backend integration (real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        # Without this the job races the database: the test binary would try to
+        # connect before Postgres finishes initialising.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+      - name: Test
+        # The suite applies migrations itself and TRUNCATEs per-user state, so it
+        # needs a disposable database -- which the service container is.
+        # --test-threads=1 because the tests share that one database.
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: cargo test --test integration_postgres -- --ignored --test-threads=1
+
+  solana-unit:
+    name: Solana program unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/solana
+      - name: Format
+        working-directory: contracts/solana
+        run: cargo fmt --all -- --check
+      # No clippy gate here, deliberately. Under `-D warnings` this crate fails
+      # on lints raised inside Anchor's generated code, which would need
+      # crate-level allows to silence -- a cleanup of its own, not something to
+      # bundle into turning CI on. The backend keeps its clippy gate, where the
+      # allows are already documented in src/lib.rs.
+      - name: Test
+        working-directory: contracts/solana
+        run: cargo test --lib
+
+  solana-anchor:
+    name: Solana integration (local validator)
+    runs-on: ubuntu-latest
+    # The image carries Anchor 0.29.0, which must match the program's
+    # anchor-lang. Its own Solana (1.17) and Node (18) are both too old and get
+    # replaced below: @solana/codecs-* refuses Node 18, and Solana 1.17 ships
+    # platform-tools with rustc 1.68, too old for the pinned solana-program.
+    container:
+      image: backpackapp/build:v0.29.0
+      options: --user root
+    env:
+      # A container job gets HOME=/github/home, not /root, so rustup looks for
+      # its config in an empty directory, finds no default toolchain, and every
+      # cargo call dies with "could not choose a version of cargo to run".
+      # Point both at the image's actual Rust installation.
+      RUSTUP_HOME: /root/.rustup
+      CARGO_HOME: /root/.cargo
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node 20
+        # @solana/spl-token pulls @solana/codecs-*, whose engines field refuses
+        # Node 18.
+        run: |
+          curl -fsSL -o /tmp/node.tar.xz \
+            https://nodejs.org/dist/v20.18.1/node-v20.18.1-linux-x64.tar.xz
+          mkdir -p /opt/node20
+          tar -xJf /tmp/node.tar.xz -C /opt/node20 --strip-components=1
+          echo "/opt/node20/bin" >> "$GITHUB_PATH"
+
+      - name: Install Solana 1.18.26
+        # Cargo.lock pins solana-program 1.18.26, and parts of that dependency
+        # set need rustc >= 1.71. The image's Solana 1.17 ships platform-tools
+        # with rustc 1.68 and fails on `zmij`. 1.18.26 ships rustc 1.75.
+        run: |
+          solana-install init 1.18.26
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Cache cargo registry and SBF build
+        uses: actions/cache@v4
+        with:
+          # Explicit paths, not ~, because CARGO_HOME is /root/.cargo here while
+          # HOME is /github/home.
+          path: |
+            /root/.cargo/registry
+            /root/.cargo/git
+            contracts/solana/target
+          key: anchor-${{ runner.os }}-${{ hashFiles('contracts/solana/Cargo.lock') }}
+          restore-keys: anchor-${{ runner.os }}-
+
+      - name: Cache yarn
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/yarn
+          key: yarn-${{ runner.os }}-${{ hashFiles('contracts/solana/yarn.lock') }}
+
+      - name: Report toolchain
+        run: |
+          solana --version
+          anchor --version
+          node --version
+          cargo --version
+          echo "lockfile format: $(grep -m1 '^version = ' contracts/solana/Cargo.lock)"
+
+      - name: Create a throwaway validator wallet
+        # Local-validator only. Never a real key, and it never leaves the runner.
+        run: |
+          mkdir -p ~/.config/solana
+          solana-keygen new --no-bip39-passphrase --silent -o ~/.config/solana/id.json
+          solana config set --url localhost
+
+      - name: Install JS dependencies
+        working-directory: contracts/solana
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        working-directory: contracts/solana
+        run: anchor build
+
+      - name: Point the placeholder program id at the generated keypair
+        # NOT `anchor keys sync`: with three [programs.*] sections naming one
+        # program it updates only one per run, leaving localnet on the
+        # placeholder while declare_id! has moved -- the deploy then fails with
+        # DeclaredProgramIdMismatch (4100). It also strips every comment from
+        # Anchor.toml. This edit is throwaway; the placeholder stays in git.
+        working-directory: contracts/solana
+        run: |
+          PID=$(solana-keygen pubkey target/deploy/aeroledger_escrow-keypair.json)
+          echo "deploy keypair: $PID"
+          sed -i "s/Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j/$PID/g" \
+            Anchor.toml programs/aeroledger-escrow/src/lib.rs
+          anchor build
+
+      - name: Test
+        working-directory: contracts/solana
+        run: anchor test
+
+      - name: Validator log on failure
+        if: failure()
+        run: tail -200 contracts/solana/.anchor/test-ledger/validator.log || true
+
+  evm:
+    name: EVM contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: contracts/ethereum/package-lock.json
+      - name: Install
+        working-directory: contracts/ethereum
+        run: npm ci
+      - name: Compile
+        working-directory: contracts/ethereum
+        run: npx hardhat compile
+      - name: Test
+        working-directory: contracts/ethereum
+        run: npx hardhat test
+
+  frontend:
+    name: Frontend types and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+      - name: Install
+        working-directory: Frontend
+        run: npm ci
+      - name: Type-check
+        working-directory: Frontend
+        run: npx tsc --noEmit
+      - name: Build
+        working-directory: Frontend
+        run: npx vite build

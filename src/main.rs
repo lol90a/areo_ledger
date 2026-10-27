@@ -1,3 +1,4 @@
+use areo_ledger::domain::ports::price_oracle::PriceOracle;
 use areo_ledger::infrastructure::auth::jwt_service::JwtService;
 use areo_ledger::infrastructure::blockchain::bitcoin_gateway::BitcoinGateway;
 use areo_ledger::infrastructure::blockchain::evm_gateway::EvmGateway;
@@ -5,16 +6,46 @@ use areo_ledger::infrastructure::blockchain::router_gateway::MultiChainGateway;
 use areo_ledger::infrastructure::blockchain::solana_gateway::SolanaGateway;
 use areo_ledger::infrastructure::config::AppConfig;
 use areo_ledger::infrastructure::db::{init_pool, run_migrations};
+use areo_ledger::infrastructure::pricing::market_price_oracle::MarketPriceOracle;
 use areo_ledger::infrastructure::workers::payment_reconciliation::PaymentReconciliationWorker;
 use areo_ledger::interfaces::http::handlers::{
-    booking_handler, health_handler, payment_handler, transaction_handler, user_handler,
+    booking_handler, catalog_handler, health_handler, payment_handler, transaction_handler,
+    user_handler,
 };
 use areo_ledger::interfaces::http::middleware::auth_middleware::AuthMiddleware;
 
 use actix_cors::Cors;
-use actix_governor::{Governor, GovernorConfigBuilder};
+use actix_governor::{Governor, GovernorConfigBuilder, KeyExtractor, SimpleKeyExtractionError};
+use actix_web::dev::ServiceRequest;
 use actix_web::{middleware, web, App, HttpServer};
 use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Rate-limit key that trusts the reverse proxy's forwarded client IP so every user
+/// behind the nginx container does not share a single bucket.
+#[derive(Clone)]
+struct RealIpKeyExtractor;
+
+impl KeyExtractor for RealIpKeyExtractor {
+    type Key = String;
+    type KeyExtractionError = SimpleKeyExtractionError<&'static str>;
+
+    fn extract(&self, req: &ServiceRequest) -> Result<Self::Key, Self::KeyExtractionError> {
+        let header = |name: &str| {
+            req.headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        };
+        let ip = header("x-forwarded-for")
+            .and_then(|v| v.split(',').next().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .or_else(|| header("x-real-ip").map(|s| s.trim().to_string()))
+            .or_else(|| req.peer_addr().map(|a| a.ip().to_string()))
+            .unwrap_or_else(|| "unknown".to_string());
+        Ok(ip)
+    }
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -53,11 +84,27 @@ async fn main() -> std::io::Result<()> {
     wallets.insert("SOL".to_string(), config.wallet_sol.clone());
 
     let multichain_gateway = MultiChainGateway::new(
-        EvmGateway::new_ethereum(config.etherscan_api_key.clone(), wallets.clone()),
-        EvmGateway::new_bsc(config.bscscan_api_key.clone(), wallets.clone()),
+        EvmGateway::new_ethereum(
+            config.etherscan_api_key.clone(),
+            config.ethereum_chain_id,
+            wallets.clone(),
+        ),
+        // Etherscan V2 serves every chain from one host and key, so BSC uses the
+        // same credential. BSCSCAN_API_KEY is kept as an optional override for
+        // deployments that still hold a separate key.
+        EvmGateway::new_bsc(
+            if config.bscscan_api_key.trim().is_empty() {
+                config.etherscan_api_key.clone()
+            } else {
+                config.bscscan_api_key.clone()
+            },
+            config.bsc_chain_id,
+            wallets.clone(),
+        ),
         SolanaGateway::new(config.solana_rpc_url.clone(), wallets.clone()),
         BitcoinGateway::new(config.bitcoin_api_base.clone(), config.wallet_btc.clone()),
         wallets,
+        config.payment_verification_mode.clone(),
     );
     PaymentReconciliationWorker::new(
         pool.clone(),
@@ -67,11 +114,20 @@ async fn main() -> std::io::Result<()> {
     .spawn();
     let multichain_gateway = web::Data::new(multichain_gateway);
 
+    let price_oracle: Arc<dyn PriceOracle> = Arc::new(MarketPriceOracle::new(
+        pool.clone(),
+        config.payment_verification_mode == "live",
+    ));
+    let price_oracle = web::Data::new(price_oracle);
+
+    // Per-client-IP limit (~5 req/s sustained, bursts to 60), keyed on the proxy's
+    // forwarded IP so one nginx container does not throttle the whole user base.
     let governor_conf = GovernorConfigBuilder::default()
-        .per_second(2)
-        .burst_size(100)
+        .per_millisecond(200)
+        .burst_size(60)
+        .key_extractor(RealIpKeyExtractor)
         .finish()
-        .unwrap();
+        .expect("valid rate limiter configuration");
 
     let bind_addr = config.bind_address();
     let frontend_url = config.frontend_url.clone();
@@ -113,6 +169,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_config.clone())
             .app_data(jwt.clone())
             .app_data(multichain_gateway.clone())
+            .app_data(price_oracle.clone())
             .app_data(web::JsonConfig::default().error_handler(|err, _req| {
                 let msg = format!("{}", err);
                 actix_web::error::InternalError::from_response(
@@ -125,6 +182,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .configure(health_handler::config)
                     .configure(user_handler::config)
+                    .configure(catalog_handler::config)
                     .configure(booking_handler::config)
                     .configure(payment_handler::config)
                     .configure(transaction_handler::config),
@@ -138,6 +196,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
-
-

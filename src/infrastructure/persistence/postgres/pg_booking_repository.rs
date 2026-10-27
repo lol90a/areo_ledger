@@ -55,35 +55,27 @@ impl PgBookingRepository {
     }
 
     fn row_to_booking(row: &tokio_postgres::Row) -> Result<Booking, DomainError> {
-        let mk = |cents: i64| {
-            Money::from_cents(cents, FiatCurrency::Usd)
-                .map_err(|e| DomainError::InternalError(e.to_string()))
-        };
+        // Read the base price exactly as a decimal string and recompute the breakdown
+        // through the canonical integer-cents Money type (no f64 truncation).
+        let base_raw: String = row.get(4);
+        let base = Money::from_decimal_str(base_raw.trim(), FiatCurrency::Usd)
+            .map_err(|e| DomainError::InternalError(e.to_string()))?;
+        let pricing = PriceBreakdown::calculate(base)
+            .map_err(|e| DomainError::InternalError(e.to_string()))?;
 
-        let base_f: f64 = row.get(4);
-        let markup_f: f64 = row.get(5);
-        let fee_f: f64 = row.get(6);
-        let total_f: f64 = row.get(7);
-
-        let pricing = PriceBreakdown {
-            base: mk((base_f * 100.0) as i64)?,
-            markup: mk((markup_f * 100.0) as i64)?,
-            service_fee: mk((fee_f * 100.0) as i64)?,
-            total: mk((total_f * 100.0) as i64)?,
-        };
-
-        let tx_raw: Option<String> = row.get(9);
+        let tx_raw: Option<String> = row.get(6);
         let tx = tx_raw.and_then(|h| TxHash::new(h).ok());
-        let created: chrono::NaiveDateTime = row.get(10);
-        let updated: chrono::NaiveDateTime = row.get(11);
+        let created: chrono::NaiveDateTime = row.get(7);
+        let updated: chrono::NaiveDateTime = row.get(8);
 
         Ok(Booking::from_db(
             Self::uuid_from_row(row, 0, "booking.id")?,
             Self::uuid_from_row(row, 1, "booking.user_id")?,
             Self::optional_uuid_from_row(row, 2, "booking.flight_id")?,
+            Self::optional_uuid_from_row(row, 9, "booking.asset_id")?,
             BookingStatus::from_str(row.get::<_, String>(3).as_str()),
             pricing,
-            row.get(8),
+            row.get(5),
             tx,
             DateTime::from_naive_utc_and_offset(created, Utc),
             DateTime::from_naive_utc_and_offset(updated, Utc),
@@ -98,9 +90,8 @@ impl BookingRepository for PgBookingRepository {
         let row = client
             .query_one(
                 "SELECT id::TEXT, user_id::TEXT, flight_id::TEXT, status::TEXT,
-             CAST(base_price AS FLOAT8), CAST(base_price * 0.10 AS FLOAT8),
-             CAST(base_price * 0.05 AS FLOAT8), CAST(total_price AS FLOAT8),
-             payment_method, tx_hash, created_at, updated_at
+             CAST(base_price AS TEXT), payment_method, tx_hash, created_at, updated_at,
+             asset_id::TEXT
              FROM bookings WHERE id = $1",
                 &[id],
             )
@@ -114,9 +105,8 @@ impl BookingRepository for PgBookingRepository {
         let rows = client
             .query(
                 "SELECT id::TEXT, user_id::TEXT, flight_id::TEXT, status::TEXT,
-             CAST(base_price AS FLOAT8), CAST(base_price * 0.10 AS FLOAT8),
-             CAST(base_price * 0.05 AS FLOAT8), CAST(total_price AS FLOAT8),
-             payment_method, tx_hash, created_at, updated_at
+             CAST(base_price AS TEXT), payment_method, tx_hash, created_at, updated_at,
+             asset_id::TEXT
              FROM bookings ORDER BY created_at DESC",
                 &[],
             )
@@ -130,9 +120,8 @@ impl BookingRepository for PgBookingRepository {
         let rows = client
             .query(
                 "SELECT id::TEXT, user_id::TEXT, flight_id::TEXT, status::TEXT,
-             CAST(base_price AS FLOAT8), CAST(base_price * 0.10 AS FLOAT8),
-             CAST(base_price * 0.05 AS FLOAT8), CAST(total_price AS FLOAT8),
-             payment_method, tx_hash, created_at, updated_at
+             CAST(base_price AS TEXT), payment_method, tx_hash, created_at, updated_at,
+             asset_id::TEXT
              FROM bookings WHERE user_id = $1 ORDER BY created_at DESC",
                 &[user_id],
             )
@@ -148,30 +137,57 @@ impl BookingRepository for PgBookingRepository {
         let total_price = b.pricing.total.to_decimal_str();
         let status = b.status.as_str().to_string();
         let method = b.payment_method.clone();
-        client.execute(
-            "INSERT INTO bookings
-             (id, user_id, flight_id, status, base_price, markup_percentage, total_price, payment_method)
-             VALUES ($1, $2, $3, $4,
-                     ($5::TEXT)::DECIMAL(15,2),
-                     ($6::TEXT)::DECIMAL(5,2),
-                     ($7::TEXT)::DECIMAL(15,2),
-                     $8)",
-            &[&b.id, &b.user_id, &b.flight_id, &status, &base_price, &markup_pct, &total_price, &method],
-        ).await.map_err(|e| {
-            log::error!("DB save booking error: {}", e);
-            InfraError::Database(e.to_string())
-        })?;
+        client
+            .execute(
+                "INSERT INTO bookings
+             (id, user_id, flight_id, asset_id, status, base_price, markup_percentage,
+              total_price, payment_method)
+             VALUES ($1, $2, $3, $4, $5,
+                     ($6::TEXT)::DECIMAL(15,2),
+                     ($7::TEXT)::DECIMAL(5,2),
+                     ($8::TEXT)::DECIMAL(15,2),
+                     $9)",
+                &[
+                    &b.id,
+                    &b.user_id,
+                    &b.flight_id,
+                    &b.asset_id,
+                    &status,
+                    &base_price,
+                    &markup_pct,
+                    &total_price,
+                    &method,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                log::error!("DB save booking error: {}", e);
+                InfraError::Database(e.to_string())
+            })?;
         Ok(())
     }
 
+    /// Persists status, settlement hash AND pricing.
+    ///
+    /// Pricing is included because re-quoting at checkout re-reads the authoritative
+    /// catalogue price; if that were not written back, the stored booking and the
+    /// quote the user approved would disagree about what was owed.
     async fn update(&self, b: &Booking) -> Result<(), DomainError> {
         let client = self.client().await?;
         let status = b.status.as_str().to_string();
         let tx_hash = b.tx_hash.as_ref().map(|h| h.as_str().to_string());
+        let base_price = b.pricing.base.to_decimal_str();
+        let total_price = b.pricing.total.to_decimal_str();
         client
             .execute(
-                "UPDATE bookings SET status = $1, tx_hash = $2, updated_at = NOW() WHERE id = $3",
-                &[&status, &tx_hash, &b.id],
+                "UPDATE bookings
+                 SET status = $1,
+                     tx_hash = $2,
+                     base_price = ($3::TEXT)::DECIMAL(15,2),
+                     total_price = ($4::TEXT)::DECIMAL(15,2),
+                     updated_at = NOW()
+                 WHERE id = $5",
+                &[&status, &tx_hash, &base_price, &total_price, &b.id],
             )
             .await
             .map_err(|e| InfraError::Database(e.to_string()))?;

@@ -1,185 +1,236 @@
 # AeroLedger
 
-AeroLedger is a crypto-native commerce platform for private aviation and luxury marketplace purchases. It combines a Rust backend with a React + Vite frontend to support browsing, cart management, protected checkout, crypto payment initialization, transaction-hash confirmation, payment-proof uploads, and transaction tracking across multiple blockchains.
+A crypto-native commerce platform for private aviation charter and tokenized
+luxury assets. A buyer browses a catalogue, books a flight or an asset share, and
+pays in cryptocurrency; the backend prices the order itself, verifies the transfer
+on-chain, and only then marks the order settled.
 
-## Highlights
+The interesting part of this system is not the checkout UI — it is the rule that
+**the client never decides what it pays and never decides whether it paid**. Every
+amount is computed server-side from an authoritative catalogue price and a recorded
+exchange rate, and every settlement is confirmed by reading the chain, given nothing
+but a transaction hash.
 
-- Flight booking checkout and marketplace asset checkout
-- Crypto payment flows for BTC, ETH, USDT, USDC, SOL, and BNB
-- Booking creation, payment initialization, hash submission, and tracking
-- Payment-proof image upload connected to the backend
-- JWT-based authentication for protected routes
-- Background reconciliation for pending payments
-- PostgreSQL-backed persistence with startup migrations
+---
 
-## Tech Stack
+## How it works
 
-### Backend
+A purchase moves through five server-controlled steps. The client supplies a
+booking id and, at the end, a transaction hash. Nothing else it sends affects the
+amount.
 
-- Rust 2021
-- Actix Web
-- Actix CORS
-- Actix Multipart
-- PostgreSQL
-- Deadpool Postgres
-- JWT authentication
-- Reqwest-based blockchain integrations for EVM, Bitcoin, and Solana
+| Step | Endpoint | What the server does |
+|---|---|---|
+| 1. Book | `POST /api/bookings` | Reads the catalogue price for the flight or asset. The request body carries no price. |
+| 2. Quote | `POST /api/payments/quote` | Converts to crypto using a live rate it fetches and records, with the markup and service fee applied. Returns an expiring quote. |
+| 3. Approve | `POST /api/payments/quote/accept` | The client echoes back the exact figures it displayed. If either has moved, the server refuses and returns the new quote rather than charging an amount the user never saw. |
+| 4. Initialize | `POST /api/payments/init` | Returns the receiving address, the exact amount in base units, and the network. |
+| 5. Confirm | `POST /api/payments/confirm` | Looks the hash up on-chain at finalized commitment, checks the recipient and the amount, and settles only on a match. |
 
-### Frontend
+Properties this buys:
 
-- React 18
-- TypeScript
-- Vite
-- React Router
-- Tailwind CSS
-- Motion
-- Radix UI primitives
+- **Amounts are integers in the token's smallest unit** (wei, lamports, satoshis)
+  end to end. No float touches a balance comparison.
+- **A price change between browsing and paying is surfaced**, not silently applied.
+- **A transaction hash settles at most one booking.** Replay is rejected at the
+  database level by a unique constraint, not only in application code.
+- **Underpaying, paying the wrong address, or inventing a hash all fail**, and the
+  error distinguishes *has not settled yet* from *will never settle* — so the UI
+  never tells a user to wait for something that cannot happen.
+- **The server decides the network.** Chain id (EVM) and RPC endpoint (Solana) are
+  served from configuration, so the wallet cannot sign on a different cluster from
+  the one the verifier reads. Startup refuses a configuration that mixes mainnet
+  and test networks.
 
-## Repository Layout
+---
 
-```text
-.
-|-- src/                    # Rust backend source
-|   |-- application/        # Use cases and DTOs
-|   |-- domain/             # Entities, ports, repositories, value objects
-|   |-- infrastructure/     # Config, DB, blockchain, persistence, workers
-|   |-- interfaces/         # HTTP handlers and middleware
-|   |-- lib.rs
-|   `-- main.rs
-|-- Frontend/               # React + Vite frontend
-|   |-- src/app/            # Pages, routes, UI, helpers, local data
-|   `-- package.json
-|-- migrations/             # PostgreSQL schema and migration SQL
-|-- deploy/                 # Deployment assets
-|-- tests/                  # Test scaffolding
-|-- .env.example
-|-- .env.production
-`-- README.md
+## Architecture
+
+The backend follows Clean Architecture, and the dependency rule is enforced rather
+than aspired to: `domain/` and `application/` import nothing from the outer layers
+and contain no framework types.
+
+```
+interfaces/      HTTP handlers, middleware, error mapping      (Actix)
+     |
+application/     Use cases: create_quote, accept_quote,        (no framework)
+     |           init_payment, confirm_payment, ...
+domain/          Entities, value objects, repository and       (no framework)
+     |           gateway traits — the ports
+infrastructure/  Postgres repositories, blockchain gateways,
+                 price oracle, config, workers                 (implements the ports)
 ```
 
-## Backend Architecture
+Use cases are generic over the repository and gateway traits, so the direction of
+dependency points inward at compile time. Each use case exposes exactly one
+`execute`. Traits are kept small — most have one or two methods — so an
+implementation is never forced to stub behaviour it does not have.
 
-The backend follows a layered structure:
+Two value objects carry most of the safety: `Money` (integer cents, no float
+constructor) and `Network` (which realm an endpoint belongs to, used to reject a
+deployment pointed at two different networks at once).
 
-- `domain` contains business entities and contracts.
-- `application` contains use cases such as booking creation, payment initialization, and payment confirmation.
-- `infrastructure` contains PostgreSQL repositories, blockchain gateways, auth services, config, and workers.
-- `interfaces` exposes the HTTP API through Actix handlers and middleware.
+### Repository layout
 
-## Core API Routes
+```
+src/                        Rust backend
+  domain/                   entities, value objects, ports, repository traits
+  application/              use cases and DTOs
+  infrastructure/           Postgres, blockchain gateways, pricing, config, workers
+  interfaces/http/          handlers, middleware, auth
+  bin/migrate.rs            standalone migration runner
+Frontend/                   React 18 + TypeScript + Vite
+  src/app/pages/            routed pages
+  src/app/components/       shared components (ui/ is shadcn/ui)
+  src/app/lib/              API client, wallet access, cart, presentation helpers
+contracts/solana/           Anchor escrow program + TypeScript integration suite
+contracts/ethereum/         Solidity escrow contract + Hardhat suite
+migrations/                 complete_schema.sql, applied at startup
+tests/                      backend integration tests against real Postgres
+```
 
-All API routes are served under `/api`.
+### Stack
 
-- `GET /api/health`
-- `POST /api/users/signup`
-- `POST /api/users/login`
-- `POST /api/bookings`
-- `GET /api/bookings/latest`
-- `GET /api/payments/options`
-- `POST /api/payments/init`
-- `POST /api/payments/confirm`
-- `POST /api/payments/proof/{booking_id}`
-- `GET /api/transactions/{user_id}`
+**Backend** — Rust 2021, Actix Web 4, `deadpool-postgres`, JWT auth, `reqwest`
+blockchain gateways for EVM (Etherscan V2), Solana JSON-RPC and Bitcoin.
 
-Protected routes require a valid JWT.
+**Frontend** — React 18, TypeScript, Vite, React Router, Tailwind, Radix
+primitives via shadcn/ui, Motion. Wallets are reached through the injected
+EIP-1193 and Solana provider interfaces directly, with no wallet-adapter
+dependency tree.
 
-## Checkout Flow
+**Contracts** — Anchor 0.29 (Solana) and Solidity 0.8.24 with OpenZeppelin
+(EVM). Both implement a buyer/seller/treasury escrow with server-signed price
+quotes.
 
-The current checkout flow supports both flight items and marketplace assets:
+---
 
-1. Sign in.
-2. Add a flight or marketplace item to the cart.
-3. Start checkout and provide client details.
-4. Create a booking on the backend.
-5. Initialize crypto payment instructions.
-6. Submit a blockchain transaction hash.
-7. Optionally upload a payment screenshot as proof.
-8. Track status from initialized to awaiting to confirmed.
+## Running it locally
 
+Three processes, in this order.
 
-## Running the Backend
-
-Make sure PostgreSQL is available and `DATABASE_URL` is valid, then run:
+### 1. Database
 
 ```bash
-cargo run
+docker compose up -d postgres
 ```
 
-Default backend address:
+Dev Postgres, published on host port **5435** so it does not collide with another
+instance. The schema is applied by the backend at startup.
 
-```text
-http://127.0.0.1:8080
+### 2. Backend
+
+```bash
+cp .env.example .env     # then set DATABASE_URL and a real 32+ character JWT_SECRET
+cargo run --bin areo_ledger
 ```
 
-## Running the Frontend
+`--bin areo_ledger` is required: the crate ships two binaries, the server and the
+standalone `migrate` runner, so a bare `cargo run` cannot choose.
 
-From the `Frontend/` directory:
+Migrations run at startup while `RUN_MIGRATIONS=true`. That combination is rejected
+when `APP_ENV=production`, where migrations are a deployment step: `cargo run --bin
+migrate`.
+
+### 3. Frontend
 
 ```bash
 cd Frontend
+echo "VITE_API_BASE_URL=http://127.0.0.1:8071" > .env
 npm install
 npm run dev
 ```
 
-The frontend uses Vite. Set `VITE_API_BASE_URL` if you need a different backend base URL.
+Vite serves on **http://127.0.0.1:3001** with `strictPort`, so it fails loudly
+rather than moving to another port and breaking CORS.
 
-## Migrations
+### Three values that must agree
 
-The backend migration runner executes `migrations/complete_schema.sql` on startup when `RUN_MIGRATIONS=true`.
+A mismatch here is the usual cause of a dead checkout with CORS errors in the
+console.
 
-That schema includes:
+| Value | Set in | Must equal |
+|---|---|---|
+| `PORT` | root `.env` | the port in `VITE_API_BASE_URL` |
+| `VITE_API_BASE_URL` | `Frontend/.env` (not committed) | `http://HOST:PORT` of the backend |
+| `FRONTEND_URL` | root `.env` | the Vite origin — it is the CORS allow-list entry |
 
-- users
-- flights
-- bookings
-- payments
-- transactions
-- audit log
-- supporting marketplace and portfolio tables
-
-## Payment Proof Uploads
-
-Payment-proof images uploaded from checkout are stored by the backend under:
-
-```text
-uploads/payment_proofs/<booking_id>/
-```
-
-The payment row also stores proof metadata such as path, content type, and upload timestamp.
-
-## Verification Commands
-
-Backend:
+Check the stack is up:
 
 ```bash
-cargo check
+curl http://127.0.0.1:8071/api/health
 ```
 
-Frontend:
+---
+
+## Testing
+
+Five suites. CI runs all of them on every pull request.
 
 ```bash
-cd Frontend
-npm run build
+# Backend unit tests
+cargo test --lib
+
+# Backend integration tests against a real Postgres (not a mock)
+docker run -d --name pg-test -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16-alpine
+TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5433/postgres \
+  cargo test --test integration_postgres -- --ignored --test-threads=1
+
+# Solana program unit tests
+cd contracts/solana && cargo test --lib
+
+# Solana integration tests against a local validator
+cd contracts/solana && yarn install --frozen-lockfile && anchor test
+
+# EVM contract tests
+cd contracts/ethereum && npm ci && npx hardhat test
+
+# Frontend types and production build
+cd Frontend && npx tsc --noEmit && npx vite build
 ```
 
-## Deployment Notes
+The Anchor suite needs an exact toolchain: **Anchor 0.29.0**, **Solana 1.18.26**
+and **Node >= 20.18**. Earlier Solana releases ship a rustc too old for the pinned
+`solana-program`, and Node 18 is refused by `@solana/codecs-*`. `Cargo.lock` is
+committed in lockfile v3 format and `yarn.lock` is committed, so neither set of
+dependencies can drift.
 
-Production deployment assets are stored in `deploy/`.
+The Solana program id in the repository is the Anchor template placeholder. Before
+any deploy, generate a real keypair and sync the id — `Anchor.toml` carries the
+exact command, and `anchor keys sync` must not be used (it updates only one of the
+three `[programs.*]` entries per run).
 
-Useful files include:
+---
 
-- `deploy/docker-compose.prod.yml`
-- `deploy/nginx.conf`
-- `Dockerfile`
-- `.env.production`
+## Deployment
 
-## Current Status
+```bash
+cp .env.production.example .env.production   # fill in real values; never commit it
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
 
-The repository currently supports:
+`Dockerfile` builds the backend, `Frontend/Dockerfile` and `Frontend/nginx.conf`
+build and serve the frontend with an API reverse proxy.
 
-- backend checkout for flights and marketplace items
-- transaction hash confirmation
-- payment-proof uploads wired from frontend to backend
-- transaction history and order tracking
+Configuration is validated at startup, and production fails closed: it rejects a
+weak or placeholder `JWT_SECRET`, a localhost `FRONTEND_URL`, startup migrations,
+manual payment verification, a malformed wallet address for any configured chain,
+and any mix of mainnet and test networks.
 
-If you change env values such as `JWT_SECRET`, restart the backend and sign in again so the frontend session stays valid.
+---
+
+## Status
+
+Stated plainly, because a reader would otherwise reasonably assume otherwise:
+
+- **The live payment path is direct payment with on-chain verification.** Both
+  escrow contracts are implemented and tested, but they are **not wired into the
+  backend** — nothing in `src/` calls them yet.
+- **`infrastructure/blockchain/retry.rs`** implements a retrying gateway with a
+  circuit breaker. It is tested but not currently constructed in `main.rs`; the
+  confirm endpoint is retried by the client instead.
+- **SPL-token settlement on Solana is deliberately unimplemented.** Only native SOL
+  is verified there. A half-right reading of a token transfer is worse than
+  refusing the route.
+- The frontend has no test suite; it is covered by type-checking and a production
+  build in CI.

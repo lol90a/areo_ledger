@@ -3,12 +3,16 @@ require("dotenv").config();
 
 module.exports = {
   solidity: {
-    version: "0.8.20",
+    version: "0.8.24",
     settings: {
       optimizer: {
         enabled: true,
         runs: 200
-      }
+      },
+      // OpenZeppelin v5.6 uses MCOPY, so Cancun is required. Ethereum (Dencun)
+      // and BSC (Haber/Bohr) both enable it; any additional target chain must be
+      // checked for Cancun support before deploying this bytecode to it.
+      evmVersion: "cancun"
     }
   },
   networks: {

@@ -283,9 +283,11 @@ CREATE INDEX IF NOT EXISTS idx_bookings_user_id     ON bookings(user_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_status      ON bookings(status);
 CREATE INDEX IF NOT EXISTS idx_payments_booking_id  ON payments(booking_id);
 
+-- Collapse duplicate payments per booking, but NEVER remove a confirmed one.
 DELETE FROM payments p
 USING payments dup
 WHERE p.booking_id IS NOT NULL
+  AND p.status <> 'confirmed'
   AND dup.booking_id = p.booking_id
   AND (
       dup.created_at > p.created_at
@@ -297,7 +299,10 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof_content_type VARCHAR
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_proof_uploaded_at TIMESTAMP;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_booking_unique ON payments(booking_id) WHERE booking_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_payments_tx_hash     ON payments(tx_hash);
+
+-- One on-chain transaction can settle at most one payment (replay / double-spend guard).
+DROP INDEX IF EXISTS idx_payments_tx_hash;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_tx_hash_unique ON payments(tx_hash) WHERE tx_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_orders_user_id       ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_portfolio_user_id    ON portfolio(user_id);
@@ -361,8 +366,102 @@ ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO flights (id, route, origin, destination, aircraft, price_usd, duration, seats, departure_time) VALUES
     ('00000000-0000-0000-0000-000000000001', 'DXB-LHR', 'Dubai', 'London', 'Boeing 777', 9500.00, '7h 30m', 8, NOW() + INTERVAL '7 days'),
     ('00000000-0000-0000-0000-000000000002', 'JFK-LAX', 'New York', 'Los Angeles', 'Gulfstream G700', 25000.00, '5h 45m', 12, NOW() + INTERVAL '3 days'),
-    ('00000000-0000-0000-0000-000000000003', 'LHR-DXB', 'London', 'Dubai', 'Airbus A380', 8500.00, '7h 15m', 6, NOW() + INTERVAL '5 days')
+    ('00000000-0000-0000-0000-000000000003', 'LHR-DXB', 'London', 'Dubai', 'Airbus A380', 8500.00, '7h 15m', 6, NOW() + INTERVAL '5 days'),
+    ('00000000-0000-0000-0000-000000000004', 'LHR-DXB', 'London', 'Dubai', 'Gulfstream G700', 53500.00, '7h 05m', 15, NOW() + INTERVAL '9 days'),
+    ('00000000-0000-0000-0000-000000000005', 'LHR-DXB', 'London', 'Dubai', 'Dassault Falcon 8X', 47250.00, '6h 55m', 14, NOW() + INTERVAL '11 days'),
+    ('00000000-0000-0000-0000-000000000006', 'LHR-DXB', 'London', 'Dubai', 'Embraer Phenom 300E', 12400.00, '7h 40m', 7, NOW() + INTERVAL '13 days')
+ON CONFLICT (id) DO NOTHING;
+
+-- ── Seed Marketplace Assets ───────────────────────────────────────────────────
+-- token_price is the server-authoritative unit price used when a booking is created
+-- with an asset_id (a client can never dictate the price).
+INSERT INTO assets (id, name, type, description, image, total_value, token_price, available_tokens, total_tokens, roi, location) VALUES
+    ('00000000-0000-0000-0000-00000000a001', 'Gulfstream G700 Fractional Share', 'aircraft', 'Fractional ownership token in a flagship ultra-long-range business jet.', NULL, 78000000.00, 15500.00, 480, 5000, 8.40, 'Global'),
+    ('00000000-0000-0000-0000-00000000a002', 'Bombardier Global 6000 Share', 'aircraft', 'Fractional ownership token in a long-range business jet.', NULL, 56000000.00, 11200.00, 610, 5000, 7.10, 'Global'),
+    ('00000000-0000-0000-0000-00000000a003', 'Private Terminal Lounge Access', 'membership', 'Tokenized annual private-terminal lounge membership.', NULL, 4200000.00, 4200.00, 1000, 1000, 3.20, 'DXB'),
+    ('00000000-0000-0000-0000-00000000a004', 'Rolls-Royce Phantom Fleet Token', 'vehicle', 'Tokenized share in a chauffeured luxury ground-fleet.', NULL, 9600000.00, 9600.00, 750, 1000, 5.50, 'LON')
 ON CONFLICT (id) DO NOTHING;
 
 
 
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Server-authoritative price quotes
+-- ═════════════════════════════════════════════════════════════════════════════
+
+-- A booking must remember WHAT it is for, not just what it cost, so checkout can
+-- re-price it against the authoritative catalogue. Marketplace-asset bookings
+-- previously dropped their asset reference entirely.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS asset_id UUID;
+
+CREATE TABLE IF NOT EXISTS payment_quotes (
+    id                 UUID PRIMARY KEY,
+    booking_id         UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    method             VARCHAR(20)  NOT NULL,
+    chain              VARCHAR(30)  NOT NULL,
+    token              VARCHAR(20)  NOT NULL,
+    token_decimals     SMALLINT     NOT NULL,
+
+    -- Fiat side, always integer minor units. Never a float.
+    base_cents         BIGINT       NOT NULL,
+    markup_cents       BIGINT       NOT NULL,
+    fee_cents          BIGINT       NOT NULL,
+    total_cents        BIGINT       NOT NULL,
+    currency           VARCHAR(3)   NOT NULL DEFAULT 'USD',
+
+    -- Rate provenance: which source produced this price, and when it was observed.
+    unit_price_usd     DECIMAL(30,10) NOT NULL,
+    rate_source        VARCHAR(40)    NOT NULL,
+    rate_observed_at   TIMESTAMP      NOT NULL,
+
+    -- Crypto side. `crypto_base_units` is the authoritative settlement figure and
+    -- is an exact integer; `crypto_amount` exists for display only.
+    crypto_amount      DECIMAL(40,18) NOT NULL,
+    crypto_base_units  NUMERIC(40,0)  NOT NULL CHECK (crypto_base_units > 0),
+
+    receiver_address   TEXT         NOT NULL,
+    status             VARCHAR(20)  NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active','accepted','superseded','expired')),
+    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at         TIMESTAMP    NOT NULL,
+    accepted_at        TIMESTAMP,
+
+    CHECK (total_cents > 0),
+    CHECK (expires_at > created_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_quotes_booking ON payment_quotes(booking_id);
+CREATE INDEX IF NOT EXISTS idx_payment_quotes_user    ON payment_quotes(user_id);
+
+-- At most one live quote per booking. Without this, two checkout tabs could each
+-- hold an active quote and the cheaper (stale) one could be accepted after a
+-- re-price. The repository supersedes the previous quote in the same transaction;
+-- this index is the database-level backstop for that invariant.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_quotes_one_active
+    ON payment_quotes(booking_id) WHERE status = 'active';
+
+-- At most one accepted quote per booking: the price lock is singular.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_quotes_one_accepted
+    ON payment_quotes(booking_id) WHERE status = 'accepted';
+
+-- ── Payments: bind each payment to the quote that priced it ───────────────────
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS quote_id UUID REFERENCES payment_quotes(id);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS token_decimals SMALLINT NOT NULL DEFAULT 18;
+-- The exact integer amount the chain is checked against. Back-filled from the
+-- legacy DECIMAL(20,8) `amount` column for rows created before quoting existed.
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS crypto_base_units NUMERIC(40,0) NOT NULL DEFAULT 0;
+
+UPDATE payments
+SET token_decimals = CASE token
+        WHEN 'BTC'  THEN 8
+        WHEN 'SOL'  THEN 9
+        WHEN 'USDT' THEN 6
+        WHEN 'USDC' THEN 6
+        ELSE 18
+    END
+WHERE token_decimals = 18 AND token IN ('BTC','SOL','USDT','USDC');
+
+UPDATE payments
+SET crypto_base_units = TRUNC(amount * POWER(10::NUMERIC, token_decimals))::NUMERIC(40,0)
+WHERE crypto_base_units = 0 AND amount > 0;

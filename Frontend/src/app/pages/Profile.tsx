@@ -61,12 +61,15 @@ export default function Profile() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-4">
-              <button className="px-6 py-3 rounded-xl border border-white/10 text-white font-medium hover:bg-white/5 transition-colors">
-                Cancel
-              </button>
-              <button className="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all">
-                Save Changes
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
+              <p className="text-xs text-slate-500 sm:mr-auto">Profile editing is coming soon — there is no backend endpoint to persist these changes yet.</p>
+              <button
+                type="button"
+                disabled
+                title="Coming soon"
+                className="px-6 py-3 rounded-xl bg-amber-500/40 text-black/60 font-semibold cursor-not-allowed"
+              >
+                Save Changes (coming soon)
               </button>
             </div>
           </motion.div>

@@ -1,7 +1,7 @@
 # Rust
 /target
+
 **/*.rs.bk
-Cargo.lock
 
 # Database
 *.db
@@ -11,11 +11,15 @@ test.db
 
 # Environment
 .env
+.env.production
 
 # Frontend
-frontend/node_modules
-frontend/build
-frontend/.env
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.env
+
+# Uploads (user-generated payment proofs)
+uploads/
 
 # IDE
 .vscode/
@@ -27,3 +31,18 @@ frontend/.env
 # OS
 .DS_Store
 Thumbs.db
+
+# Solana / Anchor build output
+# The program crate builds into its own target/ (2 GB locally); Anchor adds
+# contracts/solana/target and .anchor when it runs. None of it belongs in git.
+contracts/solana/target/
+contracts/solana/.anchor/
+contracts/solana/node_modules/
+contracts/solana/programs/*/target/
+
+# The program keypair Anchor generates. Committing it would publish the key that
+# controls program upgrades.
+**/target/deploy/*-keypair.json
+
+# Stray npm artifact: the repo root is a Cargo crate, not an npm package.
+/package-lock.json

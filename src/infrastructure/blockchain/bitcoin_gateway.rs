@@ -1,6 +1,7 @@
-use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification};
+use crate::domain::ports::blockchain_gateway::{BlockchainGateway, TxVerification, VerifyRequest};
 use crate::shared::errors::{DomainError, InfraError};
 use reqwest::Client;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct BitcoinGateway {
@@ -13,7 +14,7 @@ pub struct BitcoinGateway {
 impl BitcoinGateway {
     pub fn new(base_url: String, wallet_btc: String) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::infrastructure::http::client(Duration::from_secs(10)),
             base_url: base_url.trim_end_matches('/').to_string(),
             wallet_btc,
             min_confirmations: 3,
@@ -62,33 +63,28 @@ impl BlockchainGateway for BitcoinGateway {
         }
     }
 
-    async fn verify_transaction(
-        &self,
-        _chain: &str,
-        tx_hash: &str,
-        expected_to: &str,
-        expected_amount_cents: i64,
-    ) -> Result<TxVerification, DomainError> {
-        let tx_url = format!("{}/tx/{}", self.base_url, tx_hash);
+    async fn verify_transaction(&self, req: &VerifyRequest) -> Result<TxVerification, DomainError> {
+        let tx_url = format!("{}/tx/{}", self.base_url, req.tx_hash);
         let tx = self.fetch_json(&tx_url).await.map_err(DomainError::from)?;
 
         let outputs = tx.get("vout").and_then(|v| v.as_array()).ok_or_else(|| {
             DomainError::InternalError("Malformed Bitcoin transaction payload".to_string())
         })?;
 
-        let mut matched_sats: u64 = 0;
+        // Sum every output paying the platform address.
+        let mut matched_sats: u128 = 0;
         for output in outputs {
             let address = output
                 .get("scriptpubkey_address")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            if address == expected_to {
-                matched_sats = matched_sats
-                    .saturating_add(output.get("value").and_then(|v| v.as_u64()).unwrap_or(0));
+            if address == req.expected_to {
+                matched_sats = matched_sats.saturating_add(
+                    output.get("value").and_then(|v| v.as_u64()).unwrap_or(0) as u128,
+                );
             }
         }
 
-        let amount_cents = ((matched_sats as f64 / 100_000_000.0) * 100.0).round() as i64;
         let status = tx.get("status").cloned().unwrap_or_default();
         let confirmations = if status
             .get("confirmed")
@@ -116,14 +112,17 @@ impl BlockchainGateway for BitcoinGateway {
             0
         };
 
-        let tolerance = (expected_amount_cents / 100).max(1);
-        let verified = matched_sats > 0
-            && amount_cents >= expected_amount_cents - tolerance
-            && confirmations >= self.min_confirmations;
+        // Exact-or-more: the quote was rounded up to satoshi precision when issued,
+        // so there is no rounding slack to concede.
+        let amount_ok = matched_sats >= req.expected_base_units;
+        // Buried deep enough to be settled; anything wrong at this point stays wrong.
+        let observed = confirmations >= self.min_confirmations;
+        let verified = observed && matched_sats > 0 && amount_ok;
 
         Ok(TxVerification {
             verified,
-            amount_cents,
+            observed,
+            base_units: matched_sats,
             confirmations,
             from_address: tx
                 .get("vin")
@@ -134,7 +133,11 @@ impl BlockchainGateway for BitcoinGateway {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-            to_address: expected_to.to_string(),
+            to_address: if matched_sats > 0 {
+                req.expected_to.clone()
+            } else {
+                String::new()
+            },
         })
     }
 }

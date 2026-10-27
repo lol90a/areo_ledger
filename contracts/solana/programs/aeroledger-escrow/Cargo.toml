@@ -16,4 +16,13 @@ default = []
 
 [dependencies]
 anchor-lang = "0.29.0"
-anchor-spl = "0.29.0"
+# `token` + `associated_token` features are required for the SPL token CPI and
+# the associated-token-account escrow-vault constraints used in lib.rs. They are
+# part of anchor-spl's default feature set, but pinned explicitly here so the
+# build does not silently break if defaults change.
+anchor-spl = { version = "0.29.0", features = ["token", "associated_token"] }
+
+# NOTE: `[profile.release] overflow-checks = true` lives in the workspace root
+# (../../Cargo.toml). Cargo ignores profile settings in a non-root member and
+# only warns, so declaring it here would look like protection while providing
+# none.

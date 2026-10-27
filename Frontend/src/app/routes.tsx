@@ -12,6 +12,7 @@ import Signin from "./pages/Signin";
 import Signup from "./pages/Signup";
 import Cart from "./pages/Cart";
 import OrderTracking from "./pages/OrderTracking";
+import NotFound from "./pages/NotFound";
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { path: "checkout", Component: Checkout },
       { path: "signin", Component: Signin },
       { path: "signup", Component: Signup },
+      { path: "*", Component: NotFound },
     ],
   },
 ]);

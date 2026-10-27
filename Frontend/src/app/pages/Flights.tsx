@@ -1,59 +1,93 @@
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
 import { Plane, Calendar, Users, MapPin, Search, ArrowRight, ShieldCheck, ShoppingCart } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { addFlightToCart } from "../lib/commerce";
+import { fetchFlights, type FlightCatalogItem } from "../lib/backend";
 
-const flightOptions = [
-  {
-    name: "Citation Latitude",
-    category: "Midsize Jet",
-    pax: 8,
-    time: "6h 45m",
-    price: "0.24 BTC",
-    usd: "$16,500",
-    backendFlightId: "00000000-0000-0000-0000-000000000001",
-    backendPriceUsd: 16500,
-  },
-  {
-    name: "Challenger 350",
-    category: "Super Midsize",
-    pax: 9,
-    time: "6h 20m",
-    price: "0.38 BTC",
-    usd: "$26,000",
-    recommended: true,
-    backendFlightId: "00000000-0000-0000-0000-000000000003",
-    backendPriceUsd: 26000,
-  },
-  {
-    name: "Global 6000",
-    category: "Ultra Long Range",
-    pax: 14,
-    time: "5h 50m",
-    price: "0.62 BTC",
-    usd: "$42,500",
-    backendFlightId: "00000000-0000-0000-0000-000000000002",
-    backendPriceUsd: 42500,
-  },
+const FLIGHT_IMAGE =
+  "https://images.unsplash.com/photo-1625513123245-fcb02d69ad12?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MXx8fHwxNzc1MDMyMzkzfDA&ixlib=rb-4.1.0&q=80&w=1080";
+
+// Approximate BTC reference only for the display badge. The authoritative
+// settlement quote comes from the backend at checkout (POST /api/payments/init).
+const BTC_REFERENCE_USD = 68000;
+
+type FlightRow = {
+  backendFlightId: string;
+  name: string;
+  category: string;
+  pax: number;
+  time: string;
+  price: string;
+  usd: string;
+  route: string;
+  recommended?: boolean;
+};
+
+function formatUsd(value: number) {
+  return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function approxBtc(usd: number) {
+  return `${(usd / BTC_REFERENCE_USD).toFixed(2)} BTC`;
+}
+
+function mapFlight(flight: FlightCatalogItem, index: number): FlightRow {
+  return {
+    backendFlightId: flight.id,
+    name: flight.aircraft,
+    category: flight.route,
+    pax: flight.seats,
+    time: flight.duration ?? "On request",
+    price: approxBtc(flight.price_usd),
+    usd: formatUsd(flight.price_usd),
+    route: `${flight.origin} -> ${flight.destination}`,
+    recommended: index === 0,
+  };
+}
+
+// Local fallback used only if the backend catalog is unreachable.
+const FALLBACK_FLIGHTS: FlightRow[] = [
+  { backendFlightId: "00000000-0000-0000-0000-000000000006", name: "Phenom 300E", category: "Light Jet", pax: 7, time: "7h 40m", price: "0.18 BTC", usd: "$12,400", route: "LHR -> DXB" },
+  { backendFlightId: "00000000-0000-0000-0000-000000000001", name: "Citation Latitude", category: "Midsize Jet", pax: 8, time: "6h 45m", price: "0.24 BTC", usd: "$16,500", route: "LHR -> DXB", recommended: true },
+  { backendFlightId: "00000000-0000-0000-0000-000000000003", name: "Challenger 350", category: "Super Midsize", pax: 9, time: "6h 20m", price: "0.38 BTC", usd: "$26,000", route: "LHR -> DXB" },
+  { backendFlightId: "00000000-0000-0000-0000-000000000002", name: "Global 6000", category: "Ultra Long Range", pax: 14, time: "5h 50m", price: "0.62 BTC", usd: "$42,500", route: "LHR -> DXB" },
+  { backendFlightId: "00000000-0000-0000-0000-000000000005", name: "Falcon 8X", category: "Heavy Jet", pax: 14, time: "6h 55m", price: "0.69 BTC", usd: "$47,250", route: "LHR -> DXB" },
+  { backendFlightId: "00000000-0000-0000-0000-000000000004", name: "Gulfstream G700", category: "Ultra Long Range", pax: 15, time: "7h 05m", price: "0.78 BTC", usd: "$53,500", route: "LHR -> DXB" },
 ];
 
 export default function Flights() {
   const [searchState, setSearchState] = useState(false);
+  const [flightOptions, setFlightOptions] = useState<FlightRow[]>(FALLBACK_FLIGHTS);
   const navigate = useNavigate();
 
-  const addToCart = (jet: (typeof flightOptions)[number]) => {
+  useEffect(() => {
+    let active = true;
+    fetchFlights()
+      .then((flights) => {
+        if (!active || flights.length === 0) return;
+        setFlightOptions(flights.map(mapFlight));
+      })
+      .catch(() => {
+        // Keep the local fallback catalog if the live fetch fails.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const addToCart = (jet: FlightRow) => {
     addFlightToCart({
       backendFlightId: jet.backendFlightId,
       category: "Flight Booking",
       name: `${jet.name} Charter`,
-      subtitle: `${jet.category} ready for London to Dubai dispatch`,
-      primaryMeta: "LHR -> DXB",
-      secondaryMeta: `Oct 24, 2026 - ${jet.pax} passengers`,
+      subtitle: `${jet.category} ready for dispatch`,
+      primaryMeta: jet.route,
+      secondaryMeta: `${jet.pax} passengers`,
       cryptoPrice: jet.price,
       fiatPrice: jet.usd,
-      image: "https://images.unsplash.com/photo-1625513123245-fcb02d69ad12?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcml2YXRlJTIwamV0JTIwaW50ZXJpb3J8ZW58MXx8fHwxNzc1MDMyMzkzfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      image: FLIGHT_IMAGE,
     });
     navigate("/cart?added=flight");
   };
