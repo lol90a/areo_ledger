@@ -1,4 +1,3 @@
-import { ASSET_DATA } from "../data/assets";
 import type { AssetCatalogItem } from "./backend";
 
 export type CartItem = {
@@ -63,37 +62,6 @@ function writeCartToStorage(items: CartItem[]) {
 
 export function getCartItems(): CartItem[] {
   return readCartFromStorage();
-}
-
-export function addAssetToCart(assetId: string, backendAssetId?: string): CartItem[] {
-  const asset = ASSET_DATA.find((entry) => entry.id === assetId);
-  if (!asset) {
-    return readCartFromStorage();
-  }
-
-  const nextItem: CartItem = {
-    id: `asset-${asset.id}`,
-    sourceId: asset.id,
-    kind: "asset",
-    category: asset.assetType,
-    name: asset.name,
-    subtitle: `${asset.manufacturer} - ${asset.category}`,
-    primaryMeta: asset.location,
-    secondaryMeta: `${asset.year} model`,
-    cryptoPrice: asset.price,
-    fiatPrice: asset.usdPrice,
-    image: asset.image,
-    backendAssetId,
-  };
-
-  const current = readCartFromStorage();
-  if (current.some((item) => item.id === nextItem.id)) {
-    return current;
-  }
-
-  const updated = [...current, nextItem];
-  writeCartToStorage(updated);
-  return updated;
 }
 
 export function addBackendAssetToCart(asset: AssetCatalogItem): CartItem[] {
