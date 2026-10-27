@@ -11,7 +11,11 @@
 # same program and it updates only one of them per run, which leaves localnet on
 # the placeholder while declare_id! has moved -- the deploy then fails with
 # DeclaredProgramIdMismatch (4100). It also strips every comment in this file.
-# See TESTING.md. Deploying with the placeholder id will fail.
+# Sync the id instead with:
+#   PID=$(solana-keygen pubkey target/deploy/aeroledger_escrow-keypair.json)
+#   sed -i "s/Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j/$PID/g" \
+#     Anchor.toml programs/aeroledger-escrow/src/lib.rs
+# Deploying with the placeholder id will fail.
 
 [toolchain]
 

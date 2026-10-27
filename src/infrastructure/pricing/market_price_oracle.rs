@@ -141,8 +141,10 @@ impl PriceOracle for MarketPriceOracle {
         let now = Utc::now();
 
         if token.is_stablecoin() {
-            // USDT/USDC are quoted at their peg by policy. The residual risk (a
-            // de-peg between quote and settlement) is documented in SECURITY_AUDIT.md.
+            // USDT/USDC are quoted at their peg by policy. The residual risk is a
+            // de-peg between quote and settlement, accepted here because the quote
+            // window is minutes and a de-pegged stablecoin is a halt-trading event,
+            // not something to price around.
             return Ok(TokenRate {
                 unit_price_usd: Decimal::ONE,
                 source: "pegged".to_string(),

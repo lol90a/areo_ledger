@@ -11,7 +11,7 @@
  *     yarn install
  *     anchor test
  *
- * Requires the Anchor CLI and the Solana toolchain (see TESTING.md).
+ * Requires Anchor 0.29.0, Solana 1.18.26 and Node >= 20.18 (see the README).
  */
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";

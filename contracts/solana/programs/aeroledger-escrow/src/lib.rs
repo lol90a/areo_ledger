@@ -74,7 +74,7 @@ pub use quote::{quote_message, verify_quote_signature_data, QuoteCommitment, Quo
 // `target/deploy/aeroledger_escrow-keypair.json` BEFORE any deploy to
 // localnet/devnet/mainnet. The same id must match every entry in Anchor.toml.
 // Use the sed one-liner in Anchor.toml, not `anchor keys sync`, which updates
-// only one of the three [programs.*] entries per run (see TESTING.md).
+// only one of the three [programs.*] entries per run.
 // Deploying with this placeholder will fail id/authority checks.
 declare_id!("Fg6PaFpoGXkYsidMpWxTWqK6W2BeZ7FEfcYkgqPLF6j");
 

@@ -177,8 +177,9 @@ impl BlockchainGateway for SolanaGateway {
     async fn verify_transaction(&self, req: &VerifyRequest) -> Result<TxVerification, DomainError> {
         // Only native SOL is settled on Solana in this deployment. An SPL-token
         // payment would have to be read from `meta.preTokenBalances` /
-        // `postTokenBalances` for the right mint and owner, which is deliberately not
-        // implemented rather than approximated: see SECURITY_AUDIT.md (SOL-04).
+        // `postTokenBalances` for the right mint and owner. That is deliberately not
+        // implemented rather than approximated: a half-right reading of a token
+        // transfer is worse than refusing the route outright.
         if req.token_contract.is_some() {
             return Err(DomainError::ValidationError(
                 "SPL-token settlement is not supported on Solana by this gateway".to_string(),
