@@ -238,6 +238,40 @@ impl AppConfig {
     pub fn bind_address(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
+
+    /// A minimal valid development configuration, for tests that need an
+    /// `AppConfig` without reading the environment.
+    ///
+    /// It lives here rather than in each test module because the struct has
+    /// twenty-odd fields: duplicating the literal would mean every new setting
+    /// had to be added in several places, and a test fixture that drifts from
+    /// the real struct stops testing the real thing.
+    #[cfg(test)]
+    pub(crate) fn fixture() -> Self {
+        Self {
+            database_url: "postgres://db".to_string(),
+            jwt_secret: "a-sufficiently-long-and-random-secret-value-1234".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            wallet_btc: String::new(),
+            wallet_eth: String::new(),
+            wallet_sol: String::new(),
+            wallet_usdt: String::new(),
+            wallet_usdc: String::new(),
+            wallet_bnb: String::new(),
+            etherscan_api_key: String::new(),
+            bscscan_api_key: String::new(),
+            solana_rpc_url: String::new(),
+            bitcoin_api_base: String::new(),
+            frontend_url: "http://localhost:3001".to_string(),
+            app_env: "development".to_string(),
+            run_migrations: true,
+            payment_verification_mode: "manual".to_string(),
+            reconciliation_interval_seconds: 60,
+            ethereum_chain_id: 1,
+            bsc_chain_id: 56,
+        }
+    }
 }
 
 /// Rejects obvious placeholder / example secrets even when they clear the length bar.
@@ -306,29 +340,7 @@ mod tests {
     use super::*;
 
     fn dev_config() -> AppConfig {
-        AppConfig {
-            database_url: "postgres://db".to_string(),
-            jwt_secret: "a-sufficiently-long-and-random-secret-value-1234".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 8080,
-            wallet_btc: String::new(),
-            wallet_eth: String::new(),
-            wallet_sol: String::new(),
-            wallet_usdt: String::new(),
-            wallet_usdc: String::new(),
-            wallet_bnb: String::new(),
-            etherscan_api_key: String::new(),
-            bscscan_api_key: String::new(),
-            solana_rpc_url: String::new(),
-            bitcoin_api_base: String::new(),
-            frontend_url: "http://localhost:3001".to_string(),
-            app_env: "development".to_string(),
-            run_migrations: true,
-            payment_verification_mode: "manual".to_string(),
-            reconciliation_interval_seconds: 60,
-            ethereum_chain_id: 1,
-            bsc_chain_id: 56,
-        }
+        AppConfig::fixture()
     }
 
     #[test]
