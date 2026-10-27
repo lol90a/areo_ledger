@@ -185,8 +185,8 @@ cd contracts/solana && yarn install --frozen-lockfile && anchor test
 # EVM contract tests
 cd contracts/ethereum && npm ci && npx hardhat test
 
-# Frontend types and production build
-cd Frontend && npx tsc --noEmit && npx vite build
+# Frontend unit tests, types and production build
+cd Frontend && npm test && npx tsc --noEmit && npx vite build
 ```
 
 The Anchor suite needs an exact toolchain: **Anchor 0.29.0**, **Solana 1.18.26**
@@ -232,5 +232,7 @@ Stated plainly, because a reader would otherwise reasonably assume otherwise:
 - **SPL-token settlement on Solana is deliberately unimplemented.** Only native SOL
   is verified there. A half-right reading of a token transfer is worse than
   refusing the route.
-- The frontend has no test suite; it is covered by type-checking and a production
-  build in CI.
+- The frontend's tests cover the pure logic that handles money and cart state —
+  base-unit conversion, settlement-status mapping, cart identity. There are no
+  component or end-to-end tests; rendering is covered by type-checking and a
+  production build.

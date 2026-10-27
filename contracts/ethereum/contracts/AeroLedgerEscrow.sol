@@ -429,6 +429,23 @@ contract AeroLedgerEscrow is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      * @notice Unilateral buyer exit. If the seller never confirms, or confirms and
      *         never completes, the buyer reclaims their funds once the refund
      *         deadline passes. Closes the "funds held hostage by inaction" gap.
+     *
+     * @dev Known limitation, stated rather than hidden: after `refundDeadline`
+     *      passes on a Confirmed order, this and {completeOrder} are both live and
+     *      whichever transaction lands first decides the outcome. A seller who has
+     *      delivered but is slow to settle can lose the payment; a buyer entitled
+     *      to exit can lose it to a last-moment completion.
+     *
+     *      The cause is that `refundWindow` serves two purposes at once — how long
+     *      a refund is permitted, and when the buyer's exit opens — so the two
+     *      instants coincide and leave no gap in which only one party may act.
+     *      Nobody can receive funds they were not owed either way; what is wrong is
+     *      that the outcome is settled by transaction ordering rather than by rule.
+     *
+     *      Fixing it properly means two separate deadlines: a settlement deadline
+     *      for the seller, and a later exit deadline for the buyer, with the gap
+     *      between them as the dispute window. That is a storage-layout change, so
+     *      it is deliberately not bolted on here.
      */
     function timeoutRefund(bytes32 orderHash) external nonReentrant {
         Order storage order = _orders[orderHash];

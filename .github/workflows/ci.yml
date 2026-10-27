@@ -221,7 +221,7 @@ jobs:
         run: npx hardhat test
 
   frontend:
-    name: Frontend types and build
+    name: Frontend tests, types and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -233,6 +233,9 @@ jobs:
       - name: Install
         working-directory: Frontend
         run: npm ci
+      - name: Test
+        working-directory: Frontend
+        run: npm test
       - name: Type-check
         working-directory: Frontend
         run: npx tsc --noEmit
